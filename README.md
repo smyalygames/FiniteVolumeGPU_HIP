@@ -1,6 +1,6 @@
 # FiniteVolumeGPU
 
-This is a HIP version of the [FiniteVolume code](#https://github.com/babrodtk/FiniteVolumeGPU) (work in progress). It is a Python software package that implements several finite volume discretizations on Cartesian grids for the shallow water equations and the Euler equations. 
+This is a HIP version of the [FiniteVolume code](https://github.com/babrodtk/FiniteVolumeGPU) (work in progress). It is a Python software package that implements several finite volume discretizations on Cartesian grids for the shallow water equations and the Euler equations. 
 
 ## Setup
 A good place to start exploring this codebase is the notebooks. Complete the following steps to run the notebooks:
@@ -22,19 +22,24 @@ Have a look at the conda documentation and https://towardsdatascience.com/how-to
 Here is a step-by-step guide on installing packages on LUMI-G
 
 ### Step 0: load modules
+```
 ml LUMI/23.03
 ml lumi-container-wrapper
 ml cray-python/3.9.13.1
+```
 
 ### Step 1: run  conda-container
 Installation via conda can be done as:
-
+```
 conda-containerize new --prefix MyCondaEnv conda_environment_lumi.yml
-
+```
 where the file `conda_environment_lumi.yml` contains packages to be installed.
 
 ### Step 2: Set the env. variable to search for binaries
+```
 export the bin path: export PATH="$PWD/MyCondaEnv/bin:$PATH"
-
+```
 ### An alternative: Convert to a singularity container with cotainr
+```
 cotainr build my_container.sif --system=lumi-g --conda-env=conda_environment_lumi.yml
+```
