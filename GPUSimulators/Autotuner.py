@@ -27,11 +27,25 @@ import logging
 from socket import gethostname
 
 #import pycuda.driver as cuda
-import pyhip as cuda
+from hip import hip,hiprtc
 
 from GPUSimulators import Common, Simulator, CudaContext
 
 class Autotuner:
+    def hip_check(call_result):
+    err = call_result[0]
+    result = call_result[1:]
+    if len(result) == 1:
+        result = result[0]
+    if isinstance(err, hip.hipError_t) and err != hip.hipError_t.hipSuccess:
+        raise RuntimeError(str(err))
+    elif (
+        isinstance(err, hiprtc.hiprtcResult)
+        and err != hiprtc.hiprtcResult.HIPRTC_SUCCESS
+    ):
+        raise RuntimeError(str(err))
+    return result
+
     def __init__(self, 
                 nx=2048, ny=2048, 
                 block_widths=range(8, 32, 1),
@@ -184,24 +198,35 @@ class Autotuner:
             return np.nan
         
         #Create timer events
-        start = cuda.Event()
-        end = cuda.Event()
-        
+        #start = cuda.Event()
+        #end = cuda.Event()
+        stream = hip_check(hip.hipStreamCreate())
+
+        start = hip_check(hip.hipEventCreate())
+        end = hip_check(hip.hipEventCreate())
+
         #Warmup
         for i in range(warmup_timesteps):
             sim.stepEuler(sim.dt)
             
         #Run simulation with timer        
-        start.record(sim.stream)
+        #start.record(sim.stream)
+        #start recording
+        hip_check(hip.hipEventRecord(start, stream))
         for i in range(timesteps):
             sim.stepEuler(sim.dt)
-        end.record(sim.stream)
-        
+        #end.record(sim.stream)
+        #stop recording and synchronize
+        hip_check(hip.hipEventRecord(end, stream))
+
         #Synchronize end event
-        end.synchronize()
-        
+        #end.synchronize()
+        hip_check(hip.hipEventSynchronize(end))
+
         #Compute megacells
-        gpu_elapsed = end.time_since(start)*1.0e-3
+        #gpu_elapsed = end.time_since(start)*1.0e-3
+        gpu_elapsed = hip_check(hip.hipEventElapsedTime(start, end))
+
         megacells = (sim.nx*sim.ny*timesteps / (1000*1000)) / gpu_elapsed
 
         #Sanity check solution
