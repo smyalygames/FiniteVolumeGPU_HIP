@@ -35,14 +35,12 @@ import gc
 import netCDF4
 import json
 
-import pycuda.compiler as cuda_compiler
-import pycuda.gpuarray
-import pycuda.driver as cuda
-from pycuda.tools import PageLockedMemoryPool
+#import pycuda.compiler as cuda_compiler
+#import pycuda.gpuarray
+#import pycuda.driver as cuda
+#from pycuda.tools import PageLockedMemoryPool
 
-
-
-
+from hip import hip, hiprtc
 
 
 def safeCall(cmd):
@@ -511,10 +509,20 @@ class CudaArray2D:
         
         #self.logger.debug("Allocating [%dx%d] buffer", self.nx, self.ny)
         #Should perhaps use pycuda.driver.mem_alloc_data.pitch() here
-        self.data = pycuda.gpuarray.zeros((ny_halo, nx_halo), dtype)
-        
-        #For returning to download
-        self.memorypool = PageLockedMemoryPool()
+        #Initialize an array on GPU with zeros
+        #self.data = pycuda.gpuarray.zeros((ny_halo, nx_halo), dtype)
+        self.data_h = np.zeros((ny_halo, nx_halo), dtype="float32")
+        num_bytes = self.data_h.size * self.data_h.itemsize
+
+        # init device array and upload host data
+        self.data = hip_check(hip.hipMalloc(num_bytes)).configure(
+                 typestr="float32",shape=(ny_halo, nx_halo))
+
+        # copy data from host to device
+        hip_check(hip.hipMemcpy(self.data,self.data_h,num_bytes,hip.hipMemcpyKind.hipMemcpyHostToDevice))
+
+        #For returning to download (No counterpart in hip-python)
+        #self.memorypool = PageLockedMemoryPool()
         
         #If we don't have any data, just allocate and return
         if cpu_data is None:
@@ -553,7 +561,14 @@ class CudaArray2D:
             #self.logger.debug("Downloading [%dx%d] buffer", self.nx, self.ny)
             #Allocate host memory
             #The following fails, don't know why (crashes python)
-            cpu_data = cuda.pagelocked_empty((int(ny), int(nx)), dtype=np.float32, mem_flags=cuda.host_alloc_flags.PORTABLE)
+            #cpu_data = cuda.pagelocked_empty((int(ny), int(nx)), dtype=np.float32, mem_flags=cuda.host_alloc_flags.PORTABLE)
+            #see here type of memory: https://rocm.docs.amd.com/projects/hip-python/en/latest/python_api/hip.html#hip.hip.hipMemoryType
+            cpu_data = np.empty((ny, nx), dtype=np.float32)
+            num_bytes = cpu_data.size * cpu_data.itemsize
+            #hipHostMalloc allocates pinned host memory which is mapped into the address space of all GPUs in the system, the memory can             #be accessed directly by the GPU device            
+            #hipHostMallocDefault:Memory is mapped and portable (default allocation)
+            #hipHostMallocPortable: memory is explicitely portable across different devices
+            cpu_data = hip_check(hip.hipHostMalloc(num_bytes,hip.hipHostMallocPortable))
             #Non-pagelocked: cpu_data = np.empty((ny, nx), dtype=np.float32)
             #cpu_data = self.memorypool.allocate((ny, nx), dtype=np.float32)
             
@@ -563,20 +578,45 @@ class CudaArray2D:
         assert y+ny <= self.ny + 2*self.y_halo
         
         #Create copy object from device to host
-        copy = cuda.Memcpy2D()
-        copy.set_src_device(self.data.gpudata)
-        copy.set_dst_host(cpu_data)
+        #copy = cuda.Memcpy2D()
+        #copy.set_src_device(self.data.gpudata)
+        #copy.set_dst_host(cpu_data)
         
         #Set offsets and pitch of source
-        copy.src_x_in_bytes = int(x)*self.data.strides[1]
-        copy.src_y = int(y)
-        copy.src_pitch = self.data.strides[0]
+        #copy.src_x_in_bytes = int(x)*self.data.strides[1]
+        #copy.src_y = int(y)
+        #copy.src_pitch = self.data.strides[0]
         
         #Set width in bytes to copy for each row and
         #number of rows to copy
-        copy.width_in_bytes = int(nx)*cpu_data.itemsize
-        copy.height = int(ny)
+        #copy.width_in_bytes = int(nx)*cpu_data.itemsize
+        #copy.height = int(ny)
         
+        #The equivalent of cuda.Memcpy2D in hip-python would be: but it fails with an error pointing to cpu_data
+        #and a message: "RuntimeError: hipError_t.hipErrorInvalidValue"
+        #shape = (nx,ny)
+        #num_bytes = cpu_data.size * cpu_data.itemsize
+        #dst_pitch_bytes = cpu_data.strides[0]
+        #src_pitch_bytes = num_bytes // shape[0]
+        #src_pitch_bytes = data.strides[0]
+        #width_bytes = int(nx)*cpu_data.itemsize
+        #height_Nrows = int(ny)
+        #hipMemcpy2D(dst, unsigned long dpitch, src, unsigned long spitch, unsigned long width, unsigned long height, kind)
+        #copy = hip_check(hip.hipMemcpy2D(cpu_data, #pointer to destination
+        #                   dst_pitch_bytes, #pitch of destination array
+        #                   data, #pointer to source
+        #                   src_pitch_bytes, #pitch of source array
+        #                   width_bytes, #number of bytes in each row
+        #                   height_Nrows, #number of rows to copy
+        #                   hip.hipMemcpyKind.hipMemcpyDeviceToHost)) #kind
+
+        #this is an alternative:
+        #copy from device to host
+        cpu_data = np.empty((ny, nx), dtype=np.float32)
+        num_bytes = cpu_data.size * cpu_data.itemsize
+        #hip.hipMemcpy(dst, src, unsigned long sizeBytes, kind)
+        copy = hip_check(hip.hipMemcpy(cpu_data,self.data,num_bytes,hip.hipMemcpyKind.hipMemcpyDeviceToHost))
+
         copy(stream)
         if asynch==False:
             stream.synchronize()
@@ -599,26 +639,30 @@ class CudaArray2D:
         assert(y+ny <= self.ny + 2*self.y_halo)
          
         #Create copy object from device to host
-        copy = cuda.Memcpy2D()
-        copy.set_dst_device(self.data.gpudata)
-        copy.set_src_host(cpu_data)
+        #Well this copy from src:host to dst:device AND NOT from device to host
+        #copy = cuda.Memcpy2D()
+        #copy.set_dst_device(self.data.gpudata)
+        #copy.set_src_host(cpu_data)
         
         #Set offsets and pitch of source
-        copy.dst_x_in_bytes = int(x)*self.data.strides[1]
-        copy.dst_y = int(y)
-        copy.dst_pitch = self.data.strides[0]
+        #copy.dst_x_in_bytes = int(x)*self.data.strides[1]
+        #copy.dst_y = int(y)
+        #copy.dst_pitch = self.data.strides[0]
         
         #Set width in bytes to copy for each row and
         #number of rows to copy
-        copy.width_in_bytes = int(nx)*cpu_data.itemsize
-        copy.height = int(ny)
+        #copy.width_in_bytes = int(nx)*cpu_data.itemsize
+        #copy.height = int(ny)
         
+        #copy from host de device
+        num_bytes = cpu_data.size * cpu_data.itemsize
+        self.data = hip_check(hip.hipMalloc(num_bytes)).configure(
+                 typestr="float32",shape=cpu_data.shape)
+        #hip.hipMemcpy(dst, src, unsigned long sizeBytes, kind)
+        copy = hip_check(hip.hipMemcpy(self.data,cpu_data,num_bytes,hip.hipMemcpyKind.hipMemcpyHostToDevice))
+
         copy(stream)
 
-        
-        
-        
-        
         
         
         
@@ -644,10 +688,20 @@ class CudaArray3D:
         
         #self.logger.debug("Allocating [%dx%dx%d] buffer", self.nx, self.ny, self.nz)
         #Should perhaps use pycuda.driver.mem_alloc_data.pitch() here
-        self.data = pycuda.gpuarray.zeros((nz_halo, ny_halo, nx_halo), dtype)
+        #self.data = pycuda.gpuarray.zeros((nz_halo, ny_halo, nx_halo), dtype)
         
+        self.data_h = np.zeros((nz_halo, ny_halo, nx_halo), dtype="float32")
+        num_bytes = self.data_h.size * self.data_h.itemsize
+
+        # init device array and upload host data
+        self.data = hip_check(hip.hipMalloc(num_bytes)).configure(
+                 typestr="float32",shape=(nz_halo, ny_halo, nx_halo))
+
+        # copy data from host to device
+        hip_check(hip.hipMemcpy(self.data,self.data_h,num_bytes,hip.hipMemcpyKind.hipMemcpyHostToDevice))
+
         #For returning to download
-        self.memorypool = PageLockedMemoryPool()
+        #self.memorypool = PageLockedMemoryPool()
         
         #If we don't have any data, just allocate and return
         if cpu_data is None:
@@ -659,30 +713,37 @@ class CudaArray3D:
         assert not np.isfortran(cpu_data), "Wrong datatype (Fortran, expected C)"
             
         #Create copy object from host to device
-        copy = cuda.Memcpy3D()
-        copy.set_src_host(cpu_data)
-        copy.set_dst_device(self.data.gpudata)
+        #copy = cuda.Memcpy3D()
+        #copy.set_src_host(cpu_data)
+        #copy.set_dst_device(self.data.gpudata)
         
         #Set offsets of destination
-        x_offset = (nx_halo - cpu_data.shape[2]) // 2
-        y_offset = (ny_halo - cpu_data.shape[1]) // 2
-        z_offset = (nz_halo - cpu_data.shape[0]) // 2
-        copy.dst_x_in_bytes = x_offset*self.data.strides[1]
-        copy.dst_y = y_offset
-        copy.dst_z = z_offset
+        #x_offset = (nx_halo - cpu_data.shape[2]) // 2
+        #y_offset = (ny_halo - cpu_data.shape[1]) // 2
+        #z_offset = (nz_halo - cpu_data.shape[0]) // 2
+        #copy.dst_x_in_bytes = x_offset*self.data.strides[1]
+        #copy.dst_y = y_offset
+        #copy.dst_z = z_offset
         
         #Set pitch of destination
-        copy.dst_pitch = self.data.strides[0]
+        #copy.dst_pitch = self.data.strides[0]
         
         #Set width in bytes to copy for each row and
         #number of rows to copy
-        width = max(self.nx, cpu_data.shape[2])
-        height = max(self.ny, cpu_data.shape[1])
-        depth = max(self.nz, cpu-data.shape[0])
-        copy.width_in_bytes = width*cpu_data.itemsize
-        copy.height = height
-        copy.depth = depth
+        #width = max(self.nx, cpu_data.shape[2])
+        #height = max(self.ny, cpu_data.shape[1])
+        #depth = max(self.nz, cpu-data.shape[0])
+        #copy.width_in_bytes = width*cpu_data.itemsize
+        #copy.height = height
+        #copy.depth = depth
         
+        #copy from host to device
+        num_bytes = cpu_data.size * cpu_data.itemsize
+        self.data = hip_check(hip.hipMalloc(num_bytes)).configure(
+                 typestr="float32",shape=cpu_data.shape)
+        #hip.hipMemcpy(dst, src, unsigned long sizeBytes, kind)
+        copy = hip_check(hip.hipMemcpy(self.data,cpu_data,num_bytes,hip.hipMemcpyKind.hipMemcpyHostToDevice))
+
         #Perform the copy
         copy(stream)
         
@@ -701,39 +762,37 @@ class CudaArray3D:
         #self.logger.debug("Downloading [%dx%d] buffer", self.nx, self.ny)
         #Allocate host memory
         #cpu_data = cuda.pagelocked_empty((self.ny, self.nx), np.float32)
-        #cpu_data = np.empty((self.nz, self.ny, self.nx), dtype=np.float32)
-        cpu_data = self.memorypool.allocate((self.nz, self.ny, self.nx), dtype=np.float32)
+        cpu_data = np.empty((self.nz, self.ny, self.nx), dtype=np.float32)
+        #cpu_data = self.memorypool.allocate((self.nz, self.ny, self.nx), dtype=np.float32)
         
         #Create copy object from device to host
-        copy = cuda.Memcpy2D()
-        copy.set_src_device(self.data.gpudata)
-        copy.set_dst_host(cpu_data)
+        #copy = cuda.Memcpy2D()
+        #copy.set_src_device(self.data.gpudata)
+        #copy.set_dst_host(cpu_data)
         
         #Set offsets and pitch of source
-        copy.src_x_in_bytes = self.x_halo*self.data.strides[1]
-        copy.src_y = self.y_halo
-        copy.src_z = self.z_halo
-        copy.src_pitch = self.data.strides[0]
+        #copy.src_x_in_bytes = self.x_halo*self.data.strides[1]
+        #copy.src_y = self.y_halo
+        #copy.src_z = self.z_halo
+        #copy.src_pitch = self.data.strides[0]
         
         #Set width in bytes to copy for each row and
         #number of rows to copy
-        copy.width_in_bytes = self.nx*cpu_data.itemsize
-        copy.height = self.ny
-        copy.depth = self.nz
+        #copy.width_in_bytes = self.nx*cpu_data.itemsize
+        #copy.height = self.ny
+        #copy.depth = self.nz
         
+        #copy from device to host
+        num_bytes = cpu_data.size * cpu_data.itemsize
+        #hip.hipMemcpy(dst, src, unsigned long sizeBytes, kind)
+        copy = hip_check(hip.hipMemcpy(cpu_data,self.data,num_bytes,hip.hipMemcpyKind.hipMemcpyDeviceToHost))
+
         copy(stream)
         if asynch==False:
             stream.synchronize()
         
         return cpu_data
 
-        
-        
-        
-        
-        
-        
-        
         
 """
 A class representing an Arakawa A type (unstaggered, logically Cartesian) grid
@@ -768,13 +827,39 @@ class ArakawaA2D:
 
         #stream.synchronize()
         return cpu_variables
-        
+    
+    #hipblas
+    def sum_hipblas(self, num_elements, data):
+        num_bytes_r = np.dtype(np.float32).itemsize
+        result_d = hip_check(hip.hipMalloc(num_bytes_r))
+        result_h = np.zeros(1, dtype=np.float32)
+        print("--bytes:", num_bytes_r)
+
+        # call hipblasSaxpy + initialization
+        handle = hip_check(hipblas.hipblasCreate())
+        #hip_check(hipblas.hipblasSaxpy(handle, num_elements, ctypes.addressof(alpha), x_d, 1, y_d, 1))
+        #"incx" [int] specifies the increment for the elements of x. incx must be > 0.
+        hip_check(hipblas.hipblasSasum(handle, num_elements, data, 1, result_d))
+
+        # destruction of handle
+        hip_check(hipblas.hipblasDestroy(handle))
+
+        # copy result (stored in result_d) back to host (store in result_h)
+        hip_check(hip.hipMemcpy(result_h,result_d,num_bytes_r,hip.hipMemcpyKind.hipMemcpyDeviceToHost))
+
+        # clean up
+        hip_check(hip.hipFree(data))
+        return result_h
+
     def check(self):
         """
         Checks that data is still sane
         """
         for i, gpu_variable in enumerate(self.gpu_variables):
-            var_sum = pycuda.gpuarray.sum(gpu_variable.data).get()
+            #compute sum with hipblas
+            #var_sum = pycuda.gpuarray.sum(gpu_variable.data).get()
+            var_sum = self.sum_hipblas(gpu_variable.ny,gpu_variable.data)
+
             self.logger.debug("Data %d with size [%d x %d] has average %f", i, gpu_variable.nx, gpu_variable.ny, var_sum / (gpu_variable.nx * gpu_variable.ny))
             assert np.isnan(var_sum) == False, "Data contains NaN values!"
     
