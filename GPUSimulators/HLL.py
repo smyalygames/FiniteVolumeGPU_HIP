@@ -180,9 +180,10 @@ class HLL (Simulator.BaseSimulator):
                     )
                 )
 
+        hip_check(hip.hipDeviceSynchronize())
+        
         self.u0, self.u1 = self.u1, self.u0
 
-        hip_check(hip.hipDeviceSynchronize())
         hip_check(hip.hipModuleUnload(module))
 
         hip_check(hip.hipFree(cfl_data))
