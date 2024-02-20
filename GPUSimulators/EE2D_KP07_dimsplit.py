@@ -108,7 +108,7 @@ class EE2D_KP07_dimsplit (BaseSimulator):
         #self.kernel = module.get_function("KP07DimsplitKernel")
         #self.kernel.prepare("iiffffffiiPiPiPiPiPiPiPiPiPiiii")
         #
-        kernel_file_path = os.path.abspath(os.path.join('cuda', 'EE2D_KP07_dimsplit.cu'))
+        kernel_file_path = os.path.abspath(os.path.join('cuda', 'EE2D_KP07_dimsplit.cu.hip'))
         with open(kernel_file_path, 'r') as file:
             kernel_source = file.read()
 
