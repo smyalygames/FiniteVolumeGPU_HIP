@@ -23,6 +23,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 from GPUSimulators import Simulator, Common
 from GPUSimulators.Simulator import BaseSimulator, BoundaryCondition
 import numpy as np
+import ctypes
 
 #from pycuda import gpuarray
 from hip import hip,hiprtc
