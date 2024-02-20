@@ -41,7 +41,7 @@ import json
 #from pycuda.tools import PageLockedMemoryPool
 
 from hip import hip, hiprtc
-
+from hip import hipblas
 
 def safeCall(cmd):
     logger = logging.getLogger(__name__)
