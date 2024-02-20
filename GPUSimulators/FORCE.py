@@ -187,15 +187,14 @@ class FORCE (Simulator.BaseSimulator):
                         )
                     )
                 )
-
-            self.u0, self.u1 = self.u1, self.u0
+        self.u0, self.u1 = self.u1, self.u0
             
-            hip_check(hip.hipDeviceSynchronize())
-            hip_check(hip.hipModuleUnload(module))
+        hip_check(hip.hipDeviceSynchronize())
+        hip_check(hip.hipModuleUnload(module))
+            
+        hip_check(hip.hipFree(cfl_data))
 
-            hip_check(hip.hipFree(cfl_data))
-
-            print("--Launching Kernel .FORCEKernel. is ok")
+        print("--Launching Kernel .FORCEKernel. is ok")
 
     def getOutput(self):
         return self.u0
