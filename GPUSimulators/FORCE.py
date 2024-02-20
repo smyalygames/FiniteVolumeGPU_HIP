@@ -88,7 +88,7 @@ class FORCE (Simulator.BaseSimulator):
         self.g = np.float32(g) 
 
         #Get kernels
-#        module = context.get_module("cuda/SWE2D_FORCE.cu",
+#        module = context.get_module("cuda/SWE2D_FORCE.cu.hip",
 #                                        defines={
 #                                            'BLOCK_WIDTH': self.block_size[0], 
 #                                            'BLOCK_HEIGHT': self.block_size[1]
@@ -187,15 +187,14 @@ class FORCE (Simulator.BaseSimulator):
                         )
                     )
                 )
-
-            self.u0, self.u1 = self.u1, self.u0
+        self.u0, self.u1 = self.u1, self.u0
             
-            hip_check(hip.hipDeviceSynchronize())
-            hip_check(hip.hipModuleUnload(module))
+        hip_check(hip.hipDeviceSynchronize())
+        hip_check(hip.hipModuleUnload(module))
+            
+        hip_check(hip.hipFree(cfl_data))
 
-            hip_check(hip.hipFree(cfl_data))
-
-            print("--Launching Kernel .FORCEKernel. is ok")
+        print("--Launching Kernel .FORCEKernel. is ok")
 
     def getOutput(self):
         return self.u0
