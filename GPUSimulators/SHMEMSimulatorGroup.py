@@ -24,7 +24,8 @@ import logging
 from GPUSimulators import Simulator, CudaContext
 import numpy as np
 
-import pycuda.driver as cuda
+#import pycuda.driver as cuda
+from hip import hip, hiprtc
 
 import time
 
@@ -33,13 +34,28 @@ class SHMEMGrid(object):
     Class which represents an SHMEM grid of GPUs. Facilitates easy communication between
     neighboring subdomains in the grid. Contains one CUDA context per subdomain.
     """
+    def hip_check(call_result):
+        err = call_result[0]
+        result = call_result[1:]
+        if len(result) == 1:
+            result = result[0]
+        if isinstance(err, hip.hipError_t) and err != hip.hipError_t.hipSuccess:
+            raise RuntimeError(str(err))
+        elif (
+            isinstance(err, hiprtc.hiprtcResult)
+            and err != hiprtc.hiprtcResult.HIPRTC_SUCCESS
+        ):
+            raise RuntimeError(str(err))
+        return result
+
     def __init__(self, ngpus=None, ndims=2):
         self.logger =  logging.getLogger(__name__)
 
-        cuda.init(flags=0)
-        self.logger.info("Initializing CUDA")
-        num_cuda_devices = cuda.Device.count()
-        
+        #cuda.init(flags=0)
+        self.logger.info("Initializing HIP")
+        #num_cuda_devices = cuda.Device.count()
+        num_cuda_devices = hip_check(hip.hipGetDeviceCount())
+
         if ngpus is None:
             ngpus = num_cuda_devices
         
@@ -357,7 +373,9 @@ class SHMEMSimulatorGroup(object):
             for k in range(self.nvars[i]):
                 # XXX: Unnecessary global sync (only need to sync with neighboring subdomain to the south)
                 self.sims[i].u0[k].download(self.sims[i].stream, cpu_data=self.s[i][k,:,:], extent=self.read_s[i])
-        self.sims[i].stream.synchronize()
+        #self.sims[i].stream.synchronize()
+        hip_check(hip.hipStreamSynchronize(self.sims[i].stream))
+
 
     def ns_upload(self, i):
         #Upload to the GPU
@@ -378,7 +396,8 @@ class SHMEMSimulatorGroup(object):
             for k in range(self.nvars[i]):
                 # XXX: Unnecessary global sync (only need to sync with neighboring subdomain to the west)
                 self.sims[i].u0[k].download(self.sims[i].stream, cpu_data=self.w[i][k,:,:], extent=self.read_w[i])
-        self.sims[i].stream.synchronize()
+        #self.sims[i].stream.synchronize()
+        hip_check(hip.hipStreamSynchronize(self.sims[i].stream))
 
     def ew_upload(self, i):
         #Upload to the GPU

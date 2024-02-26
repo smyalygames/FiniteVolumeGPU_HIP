@@ -219,7 +219,7 @@ class MPISimulator(Simulator.BaseSimulator):
         ):
             raise RuntimeError(str(err))
         return result
-        
+
     def __init__(self, sim, grid):        
         self.profiling_data_mpi = { 'start': {}, 'end': {} }
         self.profiling_data_mpi["start"]["t_mpi_halo_exchange"] = 0
@@ -382,8 +382,10 @@ class MPISimulator(Simulator.BaseSimulator):
         self.full_exchange()
 
         #nvtx.mark("sync start", color="blue")
-        self.sim.stream.synchronize()
-        self.sim.internal_stream.synchronize()
+        #self.sim.stream.synchronize()
+        #self.sim.internal_stream.synchronize()
+        hip_check(hip.hipStreamSynchronize(self.sim.stream))
+        hip_check(hip.hipStreamSynchronize(self.sim.internal_stream))
         #nvtx.mark("sync end", color="blue")
         
         self.profiling_data_mpi["n_time_steps"] += 1
@@ -433,7 +435,8 @@ class MPISimulator(Simulator.BaseSimulator):
         if self.south is not None:
             for k in range(self.nvars):
                 self.sim.u0[k].download(self.sim.stream, cpu_data=self.out_s[k,:,:], asynch=True, extent=self.read_s)
-        self.sim.stream.synchronize()
+        #self.sim.stream.synchronize()
+        hip_check(hip.hipStreamSynchronize(self.sim.stream))
         
         self.profiling_data_mpi["end"]["t_mpi_halo_exchange_download"] += time.time()
         
@@ -488,7 +491,8 @@ class MPISimulator(Simulator.BaseSimulator):
         if self.west is not None:
             for k in range(self.nvars):
                 self.sim.u0[k].download(self.sim.stream, cpu_data=self.out_w[k,:,:], asynch=True, extent=self.read_w)
-        self.sim.stream.synchronize()
+        #self.sim.stream.synchronize()
+        hip_check(hip.hipStreamSynchronize(self.sim.stream))
         
         self.profiling_data_mpi["end"]["t_mpi_halo_exchange_download"] += time.time()
         
