@@ -26,9 +26,9 @@ import numpy as np
 from mpi4py import MPI
 import time
 
-import pycuda.driver as cuda
+#import pycuda.driver as cuda
 #import nvtx
-
+from hip import hip, hiprtc
 
 
 class MPIGrid(object):
@@ -292,17 +292,54 @@ class MPISimulator(Simulator.BaseSimulator):
         #Note that east and west also transfer ghost cells
         #whilst north/south only transfer internal cells
         #Reuses the width/height defined in the read-extets above
-        self.in_e = cuda.pagelocked_empty((int(self.nvars), int(self.read_e[3]), int(self.read_e[2])), dtype=np.float32) #np.empty((self.nvars, self.read_e[3], self.read_e[2]), dtype=np.float32)
-        self.in_w = cuda.pagelocked_empty((int(self.nvars), int(self.read_w[3]), int(self.read_w[2])), dtype=np.float32) #np.empty((self.nvars, self.read_w[3], self.read_w[2]), dtype=np.float32)
-        self.in_n = cuda.pagelocked_empty((int(self.nvars), int(self.read_n[3]), int(self.read_n[2])), dtype=np.float32) #np.empty((self.nvars, self.read_n[3], self.read_n[2]), dtype=np.float32)
-        self.in_s = cuda.pagelocked_empty((int(self.nvars), int(self.read_s[3]), int(self.read_s[2])), dtype=np.float32) #np.empty((self.nvars, self.read_s[3], self.read_s[2]), dtype=np.float32)
+        ##self.in_e = cuda.pagelocked_empty((int(self.nvars), int(self.read_e[3]), int(self.read_e[2])), dtype=np.float32) #np.empty((self.nvars, self.read_e[3], self.read_e[2]), dtype=np.float32)
+
+        ##self.in_w = cuda.pagelocked_empty((int(self.nvars), int(self.read_w[3]), int(self.read_w[2])), dtype=np.float32) #np.empty((self.nvars, self.read_w[3], self.read_w[2]), dtype=np.float32)
+        ##self.in_n = cuda.pagelocked_empty((int(self.nvars), int(self.read_n[3]), int(self.read_n[2])), dtype=np.float32) #np.empty((self.nvars, self.read_n[3], self.read_n[2]), dtype=np.float32)
+        ##self.in_s = cuda.pagelocked_empty((int(self.nvars), int(self.read_s[3]), int(self.read_s[2])), dtype=np.float32) #np.empty((self.nvars, self.read_s[3], self.read_s[2]), dtype=np.float32)
+
+        self.in_e = np.empty((int(self.nvars), int(self.read_e[3]), int(self.read_e[2])), dtype=np.float32)
+        num_bytes_e = self.in_e.size * self.in_e.itemsize
+        #hipHostMalloc allocates pinned host memory which is mapped into the address space of all GPUs in the system, the memory can be accessed directly by the GPU device
+        #hipHostMallocDefault:Memory is mapped and portable (default allocation)
+        #hipHostMallocPortable: memory is explicitely portable across different devices
+        self.in_e = hip_check(hip.hipHostMalloc(num_bytes_e,hip.hipHostMallocPortable))
+
+        self.in_w = np.empty((int(self.nvars), int(self.read_w[3]), int(self.read_w[2])), dtype=np.float32)
+        num_bytes_w = self.in_w.size * self.in_w.itemsize
+        self.in_w = hip_check(hip.hipHostMalloc(num_bytes_w,hip.hipHostMallocPortable))
+
+        self.in_n = np.empty((int(self.nvars), int(self.read_n[3]), int(self.read_n[2])), dtype=np.float32)
+        num_bytes_n = self.in_n.size * self.in_n.itemsize
+        self.in_n = hip_check(hip.hipHostMalloc(num_bytes_n,hip.hipHostMallocPortable))
+
+        self.in_s = np.empty((int(self.nvars), int(self.read_s[3]), int(self.read_s[2])), dtype=np.float32)
+        num_bytes_s = self.in_s.size * self.in_s.itemsize
+        self.in_s = hip_check(hip.hipHostMalloc(num_bytes_s,hip.hipHostMallocPortable))
 
         #Allocate data for sending
-        self.out_e = cuda.pagelocked_empty((int(self.nvars), int(self.read_e[3]), int(self.read_e[2])), dtype=np.float32) #np.empty_like(self.in_e)
-        self.out_w = cuda.pagelocked_empty((int(self.nvars), int(self.read_w[3]), int(self.read_w[2])), dtype=np.float32) #np.empty_like(self.in_w)
-        self.out_n = cuda.pagelocked_empty((int(self.nvars), int(self.read_n[3]), int(self.read_n[2])), dtype=np.float32) #np.empty_like(self.in_n)
-        self.out_s = cuda.pagelocked_empty((int(self.nvars), int(self.read_s[3]), int(self.read_s[2])), dtype=np.float32) #np.empty_like(self.in_s)
+        #self.out_e = cuda.pagelocked_empty((int(self.nvars), int(self.read_e[3]), int(self.read_e[2])), dtype=np.float32) #np.empty_like(self.in_e)
+        #self.out_w = cuda.pagelocked_empty((int(self.nvars), int(self.read_w[3]), int(self.read_w[2])), dtype=np.float32) #np.empty_like(self.in_w)
+        #self.out_n = cuda.pagelocked_empty((int(self.nvars), int(self.read_n[3]), int(self.read_n[2])), dtype=np.float32) #np.empty_like(self.in_n)
+        #self.out_s = cuda.pagelocked_empty((int(self.nvars), int(self.read_s[3]), int(self.read_s[2])), dtype=np.float32) #np.empty_like(self.in_s)
         
+        self.out_e = np.empty((int(self.nvars), int(self.read_e[3]), int(self.read_e[2])), dtype=np.float32)
+        num_bytes_e = self.out_e.size * self.out_e.itemsize
+        self.out_e = hip_check(hip.hipHostMalloc(num_bytes_e,hip.hipHostMallocPortable))
+
+        self.out_w = np.empty((int(self.nvars), int(self.read_w[3]), int(self.read_w[2])), dtype=np.float32)
+        num_bytes_w = self.out_w.size * self.out_w.itemsize
+        self.out_w = hip_check(hip.hipHostMalloc(num_bytes_w,hip.hipHostMallocPortable))
+
+        self.out_n = np.empty((int(self.nvars), int(self.read_n[3]), int(self.read_n[2])), dtype=np.float32)
+        num_bytes_n = self.out_n.size * self.out_n.itemsize
+        self.out_n = hip_check(hip.hipHostMalloc(num_bytes_n,hip.hipHostMallocPortable))
+
+        self.out_s = np.empty((int(self.nvars), int(self.read_s[3]), int(self.read_s[2])), dtype=np.float32)
+        num_bytes_s = self.out_s.size * self.out_s.itemsize
+        self.out_s = hip_check(hip.hipHostMalloc(num_bytes_s,hip.hipHostMallocPortable))
+
+
         self.logger.debug("Simlator rank {:d} initialized on {:s}".format(self.grid.comm.rank, MPI.Get_processor_name()))
 
         self.full_exchange()
