@@ -24,7 +24,8 @@ import logging
 from GPUSimulators import Simulator, CudaContext
 import numpy as np
 
-import pycuda.driver as cuda
+#import pycuda.driver as cuda
+from hip import hip, hiprtc
 
 import time
 
