@@ -25,14 +25,13 @@ import numpy as np
 import logging
 from enum import IntEnum
 
-import pycuda.compiler as cuda_compiler
-import pycuda.gpuarray
-import pycuda.driver as cuda
+#import pycuda.compiler as cuda_compiler
+#import pycuda.gpuarray
+#import pycuda.driver as cuda
+
+from hip import hip, hiprtc
 
 from GPUSimulators import Common
-
-
-        
 
 
 class BoundaryCondition(object):    
@@ -101,13 +100,17 @@ class BoundaryCondition(object):
         
     
     
-    
-    
-    
-    
-    
 class BaseSimulator(object):
-   
+
+    def hip_check(call_result):
+    err = call_result[0]
+    result = call_result[1:]
+    if len(result) == 1:
+        result = result[0]
+    if isinstance(err, hip.hipError_t) and err != hip.hipError_t.hipSuccess:
+        raise RuntimeError(str(err))
+    return result
+
     def __init__(self, 
                  context, 
                  nx, ny, 
@@ -161,9 +164,11 @@ class BaseSimulator(object):
                       )
         
         #Create a CUDA stream
-        self.stream = cuda.Stream()
-        self.internal_stream = cuda.Stream()
-        
+        #self.stream = cuda.Stream()
+        #self.internal_stream = cuda.Stream()
+        self.stream = hip_check(hip.hipStreamCreate())
+        self.internal_stream = hip_check(hip.hipStreamCreate())
+
         #Keep track of simulation time and number of timesteps
         self.t = 0.0
         self.nt = 0
@@ -231,7 +236,9 @@ class BaseSimulator(object):
         return self.getOutput().download(self.stream, variables)
         
     def synchronize(self):
-        self.stream.synchronize()
+        #self.stream.synchronize()
+        #Synchronize the stream to ensure operations in the stream is complete
+        hip_check(hip.hipStreamSynchronize(self.stream))
         
     def simTime(self):
         return self.t
@@ -265,15 +272,6 @@ class BaseSimulator(object):
     def computeDt(self):
         raise(NotImplementedError("Needs to be implemented in subclass"))
        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         
         
         
