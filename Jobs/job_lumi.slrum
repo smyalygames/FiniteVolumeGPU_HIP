@@ -1,0 +1,34 @@
+#!/bin/bash -e
+#SBATCH --job-name=lumi
+#SBATCH --account=project_4650000xx
+#SBATCH --time=00:10:00
+#SBATCH --partition=dev-g
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=2
+#SBATCH --gpus=2
+#SBATCH --gpus-per-node=2
+#SBATCH -o %x-%j.out
+#
+
+N=$SLURM_JOB_NUM_NODES
+echo "--nbr of nodes:", $N
+echo "--total nbr of gpus:", $SLURM_NTASKS
+
+Mydir=/project/project_4650000xx
+Myapplication=${Mydir}/FiniteVolumeGPU_hip/mpiTesting.py
+
+#modules
+ml LUMI/23.03 partition/G
+ml lumi-container-wrapper
+ml cray-python/3.9.13.1
+ml rocm/5.2.3
+
+ml craype-accel-amd-gfx90a
+ml cray-mpich/8.1.27
+
+#Enable GPU-aware MPI
+export MPICH_GPU_SUPPORT_ENABLED=1
+
+export PATH="/project/project_4650000xx/FiniteVolumeGPU_hip/MyCondaEnv/bin:$PATH"
+
+srun python ${Myapplication} -nx 1024 -ny 1024 --profile 	

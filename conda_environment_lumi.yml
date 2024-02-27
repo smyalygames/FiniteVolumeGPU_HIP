@@ -1,0 +1,36 @@
+# Assumes that conda, pip, build-essentials and cuda are installed
+---
+name: ShallowWaterGPU_HPC
+channels:
+- conda-forge
+
+dependencies:
+- python=3.9
+- numpy
+- mpi4py
+- six
+- pytools
+- netcdf4
+- scipy
+- pip:
+  - hip-python
+  - hip-python-as-cuda
+  - -i https://test.pypi.org/simple/ 
+
+
+#On LUMI-G
+#module load LUMI/23.03
+#module load lumi-container-wrapper
+#ml cray-python/3.9.13.1
+#conda-containerize new --prefix MyCondaEnv conda_environment_lumi.yml
+# export the bin path: export PATH="$PWD/MyCondaEnv/bin:$PATH"
+#
+#
+#
+# Install conda environment (one-time operation):
+# $ conda env create -f conda_environment_hpc.yml
+# Activate environment and install the following packages using pip:
+# $ conda activate ShallowWaterGPU_HPC
+#  - pycuda: $ pip3 install --no-deps -U pycuda
+# on Windows: make sure your visual studio c++ compiler is available in PATH
+# PATH should have something like C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\
