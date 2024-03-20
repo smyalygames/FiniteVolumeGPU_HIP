@@ -22,7 +22,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
 import os
-
+import ctypes
 import numpy as np
 import time
 import re
@@ -43,9 +43,8 @@ from GPUSimulators import Autotuner, Common
 """
 Class which keeps track of the CUDA context and some helper functions
 """
-class CudaContext(object):
 
-    def hip_check(call_result):
+def hip_check(call_result):
     err = call_result[0]
     result = call_result[1:]
     if len(result) == 1:
@@ -58,6 +57,8 @@ class CudaContext(object):
     ):
         raise RuntimeError(str(err))
     return result
+
+class CudaContext(object):
 
     def __init__(self, device=None, context_flags=None, use_cache=True, autotuning=True):
         """
@@ -79,30 +80,42 @@ class CudaContext(object):
         #Print some info about CUDA
         ##self.logger.info("CUDA version %s", str(cuda.get_version()))
         #self.logger.info("Driver version %s",  str(cuda.get_driver_version()))
+        self.logger.info("HIP runtime  version %s", str(hip_check(hip.hipRuntimeGetVersion())))
         self.logger.info("Driver version %s",  str(hip_check(hip.hipDriverGetVersion())))
 
         if device is None:
             device = 0
-        
-        self.cuda_device = hip.Device(device)
+       
+        hip_check(hip.hipSetDevice(device))
+        props = hip.hipDeviceProp_t()
+        hip_check(hip.hipGetDeviceProperties(props,device))
+        arch = props.gcnArchName
+        #self.cuda_device = cuda.Device(device)
+        #self.cuda_device = hip_check(hip.hipCtxGetDevice())
         #self.logger.info("Using device %d/%d '%s' (%s) GPU", device, cuda.Device.count(), self.cuda_device.name(), self.cuda_device.pci_bus_id())
-        self.logger.info("Using device %d/%d '%s' (%s) GPU", device, hip_check(hip.hipGetDeviceCount())) 
+       
+        # Allocate memory to store the PCI BusID
+        pciBusId = ctypes.create_string_buffer(64)
+        # PCI Bus Id
+        hip_check(hip.hipDeviceGetPCIBusId(pciBusId, 64, device))
+
+        self.logger.info("Using device %d/%d with --arch: '%s', --BusID: %s ", device, hip_check(hip.hipGetDeviceCount()),arch,pciBusId.value.decode('utf-8')[5:7]) 
         #self.logger.debug(" => compute capability: %s", str(self.cuda_device.compute_capability()))
-        self.logger.debug(" => compute capability: %s", str(self.hip.hipDeviceComputeCapability(device)))
+        self.logger.debug(" => compute capability: %s", hip_check(hip.hipDeviceComputeCapability(device)))
 
         # Create the CUDA context
         if context_flags is None:
         #    context_flags=cuda.ctx_flags.SCHED_AUTO
              context_flags=hip_check(hip.hipSetDeviceFlags(hip.hipDeviceScheduleAuto)) 
         #self.cuda_context = self.cuda_device.make_context(flags=context_flags)
-        self.cuda_context = self.hip_check(hip.hipCtxCreate(0, device))
+        self.cuda_context = hip_check(hip.hipCtxCreate(0, device))
 
         #free, total = cuda.mem_get_info()
         total = hip_check(hip.hipDeviceTotalMem(device))
         #self.logger.debug(" => memory: %d / %d MB available", int(free/(1024*1024)), int(total/(1024*1024)))
-        self.logger.debug(" => memory: %d / %d MB available", int(total/(1024*1024)))
+        self.logger.debug(" => Total memory: %d MB available", int(total/(1024*1024)))
 
-        self.logger.info("Created context handle <%s>", str(self.cuda_context.handle))
+        ##self.logger.info("Created context handle <%s>", str(self.cuda_context.handle))
         
         #Create cache dir for cubin files
         self.cache_path = os.path.join(self.module_path, "cuda_cache") 
