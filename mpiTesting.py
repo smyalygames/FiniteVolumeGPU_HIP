@@ -28,17 +28,19 @@ import logging
 import os
 
 #GPU-aware MPI
+"""
 from os import environ
 if environ.get("MPICH_GPU_SUPPORT_ENABLED", False):
     from ctypes import CDLL, RTLD_GLOBAL
     CDLL(f"{environ.get('CRAY_MPICH_ROOTDIR')}/gtl/lib/libmpi_gtl_hsa.so", mode=RTLD_GLOBAL)
+"""
 
 # MPI
 from mpi4py import MPI
 
 # CUDA
 #import pycuda.driver as cuda
-from hip import hip
+from hip import hip,hiprtc
 
 # Simulator engine etc
 from GPUSimulators import MPISimulator, Common, CudaContext
@@ -110,6 +112,15 @@ logger.info("File logger using level %s to %s",
 logger.info("Creating MPI grid")
 grid = MPISimulator.MPIGrid(MPI.COMM_WORLD)
 
+"""
+job_id = int(os.environ["SLURM_JOB_ID"])
+allocated_nodes = int(os.environ["SLURM_JOB_NUM_NODES"])
+allocated_gpus = int(os.environ["ROCR_VISIBLE_DEVICES"].count(",") + 1)
+
+print("job_id:", job_id)
+print("allocated_nodes", allocated_nodes)
+print("allocated_gpus", allocated_gpus)
+"""
 
 ####
 # Initialize CUDA
@@ -122,7 +133,6 @@ num_cuda_devices = hip_check(hip.hipGetDeviceCount())
 cuda_device = local_rank % num_cuda_devices
 logger.info("Process %s using CUDA device %s", str(local_rank), str(cuda_device))
 cuda_context = CudaContext.CudaContext(device=cuda_device, autotuning=False)
-
 
 ####
 # Set initial conditions
@@ -183,7 +193,7 @@ if(args.profile and MPI.COMM_WORLD.rank == 0):
     if "SLURM_JOB_ID" in os.environ:
         job_id = int(os.environ["SLURM_JOB_ID"])
         allocated_nodes = int(os.environ["SLURM_JOB_NUM_NODES"])
-        allocated_gpus = int(os.environ["HIP_VISIBLE_DEVICES"].count(",") + 1)
+        allocated_gpus = int(os.environ["ROCR_VISIBLE_DEVICES"].count(",") + 1)
      #   allocated_gpus = int(os.environ["CUDA_VISIBLE_DEVICES"].count(",") + 1)
         profiling_file = "MPI_jobid_" + \
             str(job_id) + "_" + str(allocated_nodes) + "_nodes_and_" + str(allocated_gpus) + "_GPUs_profiling.json"
