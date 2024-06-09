@@ -5,7 +5,7 @@ channels:
 - conda-forge
 
 dependencies:
-- python=3.9
+- python=3.9.13
 - numpy
 - mpi4py
 - six
@@ -13,8 +13,7 @@ dependencies:
 - netcdf4
 - scipy
 - pip:
-  - hip-python
-  - hip-python-as-cuda
+  - hip-python==5.4.3.470.16
   - -i https://test.pypi.org/simple/ 
 
 
