@@ -22,6 +22,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #Import packages we need
 import numpy as np
+import math
 import logging
 from enum import IntEnum
 
@@ -33,6 +34,20 @@ from hip import hip, hiprtc
 
 from GPUSimulators import Common
 
+
+def hip_check(call_result):
+    err = call_result[0]
+    result = call_result[1:]
+    if len(result) == 1:
+        result = result[0]
+    if isinstance(err, hip.hipError_t) and err != hip.hipError_t.hipSuccess:
+        raise RuntimeError(str(err))
+    elif (
+        isinstance(err, hiprtc.hiprtcResult)
+        and err != hiprtc.hiprtcResult.HIPRTC_SUCCESS
+    ):
+        raise RuntimeError(str(err))
+    return result
 
 class BoundaryCondition(object):    
     """
@@ -102,15 +117,6 @@ class BoundaryCondition(object):
     
 class BaseSimulator(object):
 
-    def hip_check(call_result):
-    err = call_result[0]
-    result = call_result[1:]
-    if len(result) == 1:
-        result = result[0]
-    if isinstance(err, hip.hipError_t) and err != hip.hipError_t.hipSuccess:
-        raise RuntimeError(str(err))
-    return result
-
     def __init__(self, 
                  context, 
                  nx, ny, 
@@ -155,14 +161,19 @@ class BaseSimulator(object):
             block_width = int(peak_configuration["block_width"])
             block_height = int(peak_configuration["block_height"])
             self.logger.debug("Used autotuning to get block size [%d x %d]", block_width, block_height)
-        
+
         #Compute kernel launch parameters
+        """
         self.block_size = (block_width, block_height, 1) 
         self.grid_size = ( 
                        int(np.ceil(self.nx / float(self.block_size[0]))), 
                        int(np.ceil(self.ny / float(self.block_size[1]))) 
                       )
-        
+        """
+        self.block_size = hip.dim3(block_width, block_height) 
+        #self.grid_size = hip.dim3(math.ceil(self.nx/block_width),math.ceil(self.ny/block_height))
+        self.grid_size = hip.dim3(math.ceil((self.nx+block_width-1)/block_width),math.ceil((self.ny+block_height-1)/block_height))
+
         #Create a CUDA stream
         #self.stream = cuda.Stream()
         #self.internal_stream = cuda.Stream()

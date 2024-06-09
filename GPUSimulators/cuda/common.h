@@ -24,6 +24,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #pragma once
 
+#include <stddef.h>
+#include <float.h>
 
 /**
   * Float3 operators 
@@ -81,9 +83,6 @@ inline __device__ __host__ int clamp(const int f, const int a, const int b) {
 __device__ float desingularize(float x_, float eps_) {
     return copysign(1.0f, x_)*fmaxf(fabsf(x_), fminf(x_*x_/(2.0f*eps_)+0.5f*eps_, eps_));
 }
-
-
-
 
 
 
@@ -497,14 +496,18 @@ __device__ void memset(float Q[vars][shmem_height][shmem_width], float value) {
 
 
 template <unsigned int threads>
-__device__ void reduce_max(float* data, unsigned int n) {
+//__device__ void reduce_max(float* data, unsigned int n) {
+__device__ float reduce_max(float* data, unsigned int n) {	
 	__shared__ float sdata[threads];
 	unsigned int tid = threadIdx.x;
 
 	//Reduce to "threads" elements
 	sdata[tid] = FLT_MIN;
 	for (unsigned int i=tid; i<n; i += threads) {
-		sdata[tid] = max(sdata[tid], dt_ctx.L[i]);
+		
+		//sdata[tid] = max(sdata[tid], dt_ctx.L[i]);
+		sdata[tid] = max(sdata[tid], data[i]);
+
     }
 	__syncthreads();
 

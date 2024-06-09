@@ -31,8 +31,7 @@ from hip import hip,hiprtc
 
 from GPUSimulators import Common, Simulator, CudaContext
 
-class Autotuner:
-    def hip_check(call_result):
+def hip_check(call_result):
     err = call_result[0]
     result = call_result[1:]
     if len(result) == 1:
@@ -46,6 +45,8 @@ class Autotuner:
         raise RuntimeError(str(err))
     return result
 
+
+class Autotuner:
     def __init__(self, 
                 nx=2048, ny=2048, 
                 block_widths=range(8, 32, 1),

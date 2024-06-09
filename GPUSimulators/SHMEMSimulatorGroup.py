@@ -29,24 +29,25 @@ from hip import hip, hiprtc
 
 import time
 
+def hip_check(call_result):
+    err = call_result[0]
+    result = call_result[1:]
+    if len(result) == 1:
+        result = result[0]
+    if isinstance(err, hip.hipError_t) and err != hip.hipError_t.hipSuccess:
+        raise RuntimeError(str(err))
+    elif (
+        isinstance(err, hiprtc.hiprtcResult)
+        and err != hiprtc.hiprtcResult.HIPRTC_SUCCESS
+    ):
+        raise RuntimeError(str(err))
+    return result
+
 class SHMEMGrid(object):
     """
     Class which represents an SHMEM grid of GPUs. Facilitates easy communication between
     neighboring subdomains in the grid. Contains one CUDA context per subdomain.
     """
-    def hip_check(call_result):
-        err = call_result[0]
-        result = call_result[1:]
-        if len(result) == 1:
-            result = result[0]
-        if isinstance(err, hip.hipError_t) and err != hip.hipError_t.hipSuccess:
-            raise RuntimeError(str(err))
-        elif (
-            isinstance(err, hiprtc.hiprtcResult)
-            and err != hiprtc.hiprtcResult.HIPRTC_SUCCESS
-        ):
-            raise RuntimeError(str(err))
-        return result
 
     def __init__(self, ngpus=None, ndims=2):
         self.logger =  logging.getLogger(__name__)

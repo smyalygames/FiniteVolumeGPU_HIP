@@ -1,12 +1,8 @@
 # -*- coding: utf-8 -*-
 
 """
-This python module implements the Kurganov-Petrova numerical scheme 
-for the shallow water equations, described in 
-A. Kurganov & Guergana Petrova
-A Second-Order Well-Balanced Positivity Preserving Central-Upwind
-Scheme for the Saint-Venant System Communications in Mathematical
-Sciences, 5 (2007), 133-160. 
+This python module implements the FORCE flux
+for the shallow water equations
 
 Copyright (C) 2016  SINTEF ICT
 
@@ -32,14 +28,26 @@ import ctypes
 
 #from pycuda import gpuarray
 from hip import hip,hiprtc
+from hip import hipblas
 
-
-
+def hip_check(call_result):
+    err = call_result[0]
+    result = call_result[1:]
+    if len(result) == 1:
+        result = result[0]
+    if isinstance(err, hip.hipError_t) and err != hip.hipError_t.hipSuccess:
+        raise RuntimeError(str(err))
+    elif (
+        isinstance(err, hiprtc.hiprtcResult)
+        and err != hiprtc.hiprtcResult.HIPRTC_SUCCESS
+    ):
+        raise RuntimeError(str(err))
+    return result
 
 """
 Class that solves the SW equations using the dimentionally split KP07 scheme
 """
-class KP07_dimsplit(Simulator.BaseSimulator):
+class KP07_dimsplit (Simulator.BaseSimulator):
 
     """
     Initialization routine
@@ -54,27 +62,13 @@ class KP07_dimsplit(Simulator.BaseSimulator):
     g: Gravitational accelleration (9.81 m/s^2)
     """
 
-    def hip_check(call_result):
-        err = call_result[0]
-        result = call_result[1:]
-        if len(result) == 1:
-            result = result[0]
-        if isinstance(err, hip.hipError_t) and err != hip.hipError_t.hipSuccess:
-            raise RuntimeError(str(err))
-        elif (
-            isinstance(err, hiprtc.hiprtcResult)
-            and err != hiprtc.hiprtcResult.HIPRTC_SUCCESS
-        ):
-            raise RuntimeError(str(err))
-        return result
-
     def __init__(self, 
                  context, 
                  h0, hu0, hv0, 
                  nx, ny, 
                  dx, dy, 
                  g, 
-                 theta=1.3, 
+                 theta=1.3,
                  cfl_scale=0.9,
                  boundary_conditions=BoundaryCondition(), 
                  block_width=16, block_height=16):
@@ -85,32 +79,66 @@ class KP07_dimsplit(Simulator.BaseSimulator):
             dx, dy, 
             boundary_conditions,
             cfl_scale,
-            2, 
+            2,             
             block_width, block_height)
         self.gc_x = 2
         self.gc_y = 2
-        self.g = np.float32(g)
+        self.g = np.float32(g) 
         self.theta = np.float32(theta)
 
-        #Get kernels
-#        module = context.get_module("cuda/SWE2D_KP07_dimsplit.cu", 
-#                                        defines={
-#                                            'BLOCK_WIDTH': self.block_size[0], 
-#                                            'BLOCK_HEIGHT': self.block_size[1]
-#                                        }, 
-#                                        compile_args={
-#                                            'no_extern_c': True,
-#                                            'options': ["--use_fast_math"], 
-#                                        }, 
-#                                        jit_compile_args={})
-#        self.kernel = module.get_function("KP07DimsplitKernel")
-#        self.kernel.prepare("iifffffiiPiPiPiPiPiPiP")
-    
-        kernel_file_path = os.path.abspath(os.path.join('cuda', 'SWE2D_KP07_dimsplit.cu.hip'))
+        #Get cuda kernels
+        """
+        module = context.get_module("cuda/SWE2D_KP07_dimsplit.cu",
+                                        defines={
+                                            'BLOCK_WIDTH': self.block_size[0], 
+                                            'BLOCK_HEIGHT': self.block_size[1]
+                                        }, 
+                                        compile_args={
+                                            'no_extern_c': True,
+                                            'options': ["--use_fast_math"], 
+                                        }, 
+                                        jit_compile_args={})
+        self.kernel = module.get_function("KP07DimsplitKernel")
+        self.kernel.prepare("iiffffiPiPiPiPiPiPiP")
+        """
+
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # Specify the relative path to the "cuda" directory
+        cuda_dir = os.path.join(current_dir, 'cuda')
+
+        #kernel source
+        kernel_file_path = os.path.abspath(os.path.join(cuda_dir, 'SWE2D_KP07_dimsplit.cu.hip'))
         with open(kernel_file_path, 'r') as file:
             kernel_source = file.read()
 
-        prog = hip_check(hiprtc.hiprtcCreateProgram(kernel_source.encode(), b"KP07DimsplitKernel", 0, [], []))
+        #headers
+        #common.h
+        header_file_path = os.path.abspath(os.path.join(cuda_dir, 'common.h'))
+        with open(header_file_path, 'r') as file:
+            header_common = file.read()
+
+        #SWECommon.h
+        header_file_path = os.path.abspath(os.path.join(cuda_dir, 'SWECommon.h'))
+        with open(header_file_path, 'r') as file:
+            header_EulerCommon = file.read()
+        
+        #limiters.h
+        header_file_path = os.path.abspath(os.path.join(cuda_dir, 'limiters.h'))
+        with open(header_file_path, 'r') as file:
+            header_limiters = file.read()
+
+        #hip.hiprtc.hiprtcCreateProgram(const char *src, const char *name, int numHeaders, headers, includeNames)
+        prog = hip_check(hiprtc.hiprtcCreateProgram(kernel_source.encode(), b"KP07DimsplitKernel", 3, [header_common.encode(),header_EulerCommon.encode(),header_limiters.encode()], [b"common.h",b"SWECommon.h",b"limiters.h"]))
+
+        # Check if the program is created successfully
+        if prog is not None:
+            print("--This is <SWE2D_KP07_dimsplit.cu.hip>")
+            print("--HIPRTC program created successfully")
+            print()
+        else:
+            print("--Failed to create HIPRTC program")
+            print("--I stop:", err)
+            exit()
 
         props = hip.hipDeviceProp_t()
         hip_check(hip.hipGetDeviceProperties(props,0))
@@ -118,19 +146,38 @@ class KP07_dimsplit(Simulator.BaseSimulator):
 
         print(f"Compiling kernel .KP07DimsplitKernel. for {arch}")
 
-        cflags = [b"--offload-arch="+arch]
+        cflags = [b"--offload-arch="+arch, b"-O2", b"-D BLOCK_WIDTH="+ str(self.block_size[0]).encode(), b"-D BLOCK_HEIGHT=" + str(self.block_size[1]).encode()]
+
         err, = hiprtc.hiprtcCompileProgram(prog, len(cflags), cflags)
+        # Check if the program is compiled successfully
+        if err is not None:
+            print("--Compilation:", err)
+            print("--The program is compiled successfully")
+        else:
+            print("--Compilation:", err)
+            print("--Failed to compile the program")
+            print("--I stop:", err)
+
         if err != hiprtc.hiprtcResult.HIPRTC_SUCCESS:
             log_size = hip_check(hiprtc.hiprtcGetProgramLogSize(prog))
             log = bytearray(log_size)
             hip_check(hiprtc.hiprtcGetProgramLog(prog, log))
             raise RuntimeError(log.decode())
+
         code_size = hip_check(hiprtc.hiprtcGetCodeSize(prog))
         code = bytearray(code_size)
         hip_check(hiprtc.hiprtcGetCode(prog, code))
-        module = hip_check(hip.hipModuleLoadData(code))
 
-        kernel = hip_check(hip.hipModuleGetFunction(module, b"KP07DimsplitKernel"))
+        #Load the code as a module
+        self.module = hip_check(hip.hipModuleLoadData(code))
+
+        #Get the device kernel named named "FORCEKernel"
+        self.kernel = hip_check(hip.hipModuleGetFunction(self.module, b"KP07DimsplitKernel"))
+
+        print()
+        print("--Get the device kernel *KP07DimsplitKernel* is created successfully--")
+        print("--kernel", self.kernel)
+        print()
 
         #Create data by uploading to device
         self.u0 = Common.ArakawaA2D(self.stream, 
@@ -139,77 +186,94 @@ class KP07_dimsplit(Simulator.BaseSimulator):
                         [h0, hu0, hv0])
         self.u1 = Common.ArakawaA2D(self.stream, 
                         nx, ny, 
-                        self.gc_x, self.gc_y, 
+                        self.gc_x, self.gc_y,
                         [None, None, None])
         #self.cfl_data = gpuarray.GPUArray(self.grid_size, dtype=np.float32)
-        data_h = np.empty(self.grid_size, dtype=np.float32)
-        num_bytes = data_h.size * data_h.itemsize
-        self.cfl_data = hip_check(hip.hipMalloc(num_bytes)).configure(
-                 typestr="float32",shape=self.grid_size)
 
         dt_x = np.min(self.dx / (np.abs(hu0/h0) + np.sqrt(g*h0)))
         dt_y = np.min(self.dy / (np.abs(hv0/h0) + np.sqrt(g*h0)))
         dt = min(dt_x, dt_y)
-        self.cfl_data.fill(dt, stream=self.stream)
-    
+        #in HIP, the "DeviceArray" object doesn't have a 'fill' attribute
+        #self.cfl_data.fill(self.dt, stream=self.stream)
+        grid_dim_x, grid_dim_y, grid_dim_z = self.grid_size
+
+        data_h = np.zeros((grid_dim_x, grid_dim_y), dtype=np.float32)
+        num_bytes = data_h.size * data_h.itemsize
+        data_h.fill(self.dt)
+
+        self.cfl_data = hip_check(hip.hipMalloc(num_bytes)).configure(
+                 typestr="float32",shape=(grid_dim_x, grid_dim_y))
+
+        hip_check(hip.hipMemcpyAsync(self.cfl_data,data_h,num_bytes,hip.hipMemcpyKind.hipMemcpyHostToDevice,self.stream))
+        #sets the memory region pointed to by x_d to zero asynchronously
+        #initiates the memset operation asynchronously
+        #hip_check(hip.hipMemsetAsync(self.cfl_data,0,num_bytes,self.stream))
+
     def substep(self, dt, step_number):
         self.substepDimsplit(dt*0.5, step_number)
-    
+
     def substepDimsplit(self, dt, substep):
-#        self.kernel.prepared_async_call(self.grid_size, self.block_size, self.stream, 
-#                self.nx, self.ny, 
-#                self.dx, self.dy, dt, 
-#                self.g, 
-#                self.theta, 
-#                substep, 
-#                self.boundary_conditions, 
-#                self.u0[0].data.gpudata, self.u0[0].data.strides[0], 
-#                self.u0[1].data.gpudata, self.u0[1].data.strides[0], 
-#                self.u0[2].data.gpudata, self.u0[2].data.strides[0], 
-#                self.u1[0].data.gpudata, self.u1[0].data.strides[0], 
-#                self.u1[1].data.gpudata, self.u1[1].data.strides[0], 
-#                self.u1[2].data.gpudata, self.u1[2].data.strides[0],
-#                self.cfl_data.gpudata)
+        #Cuda
+        """
+        self.kernel.prepared_async_call(self.grid_size, self.block_size, self.stream, 
+                self.nx, self.ny, 
+                self.dx, self.dy, dt, 
+                self.g, 
+                self.theta,
+                substep,
+                self.boundary_conditions, 
+                self.u0[0].data.gpudata, self.u0[0].data.strides[0], 
+                self.u0[1].data.gpudata, self.u0[1].data.strides[0], 
+                self.u0[2].data.gpudata, self.u0[2].data.strides[0], 
+                self.u1[0].data.gpudata, self.u1[0].data.strides[0], 
+                self.u1[1].data.gpudata, self.u1[1].data.strides[0], 
+                self.u1[2].data.gpudata, self.u1[2].data.strides[0],
+                self.cfl_data.gpudata)
+        self.u0, self.u1 = self.u1, self.u0        
+        """
+
+        u00_strides0 = self.u0[0].data.shape[0]*np.float32().itemsize
+        u01_strides0 = self.u0[1].data.shape[0]*np.float32().itemsize
+        u02_strides0 = self.u0[2].data.shape[0]*np.float32().itemsize
+
+        u10_strides0 = self.u1[0].data.shape[0]*np.float32().itemsize
+        u11_strides0 = self.u1[1].data.shape[0]*np.float32().itemsize
+        u12_strides0 = self.u1[2].data.shape[0]*np.float32().itemsize
 
         #launch kernel
         hip_check(
                 hip.hipModuleLaunchKernel(
-                    kernel,
-                    *self.grid_size,
-                    *self.block_size,
-                    sharedMemBytes=0,
+                    self.kernel,
+                    *self.grid_size, #grid
+                    *self.block_size, #block
+                    sharedMemBytes=0, #65536,
                     stream=self.stream,
                     kernelParams=None,
                     extra=(     # pass kernel's arguments
                         ctypes.c_int(self.nx), ctypes.c_int(self.ny),
-                        ctypes.c_float(self.dx), ctypes.c_float(self.dy), ctypes.c_float(self.dt),
+                        ctypes.c_float(self.dx), ctypes.c_float(self.dy), ctypes.c_float(dt),
                         ctypes.c_float(self.g),
                         ctypes.c_float(self.theta),
-                        ctypes.c_int(substep)   
+                        ctypes.c_int(substep),   
                         ctypes.c_int(self.boundary_conditions),
-                        ctypes.c_float(self.u0[0].data), ctypes.c_float(self.u0[0].data.strides[0]),
-                        ctypes.c_float(self.u0[1].data), ctypes.c_float(self.u0[1].data.strides[0]),
-                        ctypes.c_float(self.u0[2].data), ctypes.c_float(self.u0[2].data.strides[0]),
-                        ctypes.c_float(self.u1[0].data), ctypes.c_float(self.u1[0].data.strides[0]),
-                        ctypes.c_float(self.u1[1].data), ctypes.c_float(self.u1[1].data.strides[0]),
-                        ctypes.c_float(self.u1[2].data), ctypes.c_float(self.u1[2].data.strides[0]),
-                        self.cfl_data
-                        )
+                        self.u0[0].data, ctypes.c_int(u00_strides0),
+                        self.u0[1].data, ctypes.c_int(u01_strides0),
+                        self.u0[2].data, ctypes.c_int(u02_strides0),
+                        self.u1[0].data, ctypes.c_int(u10_strides0),
+                        self.u1[1].data, ctypes.c_int(u11_strides0),
+                        self.u1[2].data, ctypes.c_int(u12_strides0),
+                        self.cfl_data,
                     )
                 )
-
-        hip_check(hip.hipDeviceSynchronize())
+            )
 
         self.u0, self.u1 = self.u1, self.u0
-        hip_check(hip.hipModuleUnload(module))
-
-        hip_check(hip.hipFree(cfl_data))
-
-        print("--Launching Kernel .KP07DimsplitKernel. is ok")
+            
+        #print("--Launching Kernel .KP07DimsplitKernel. is ok")
 
     def getOutput(self):
         return self.u0
-
+        
     def check(self):
         self.u0.check()
         self.u1.check()

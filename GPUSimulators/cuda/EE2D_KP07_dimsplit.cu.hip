@@ -25,7 +25,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "EulerCommon.h"
 #include "limiters.h"
 
-
 __device__
 void computeFluxF(float Q[4][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
                   float Qx[4][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],

@@ -85,8 +85,9 @@ class CudaContext(object):
 
         if device is None:
             device = 0
-       
-        hip_check(hip.hipSetDevice(device))
+      
+        num_gpus = hip_check(hip.hipGetDeviceCount())
+        hip.hipSetDevice(device)
         props = hip.hipDeviceProp_t()
         hip_check(hip.hipGetDeviceProperties(props,device))
         arch = props.gcnArchName
@@ -97,9 +98,12 @@ class CudaContext(object):
         # Allocate memory to store the PCI BusID
         pciBusId = ctypes.create_string_buffer(64)
         # PCI Bus Id
-        hip_check(hip.hipDeviceGetPCIBusId(pciBusId, 64, device))
+        #hip_check(hip.hipDeviceGetPCIBusId(pciBusId, 64, device))
+        pciBusId = hip_check(hip.hipDeviceGetPCIBusId(64, device))
 
-        self.logger.info("Using device %d/%d with --arch: '%s', --BusID: %s ", device, hip_check(hip.hipGetDeviceCount()),arch,pciBusId.value.decode('utf-8')[5:7]) 
+
+        #self.logger.info("Using device %d/%d with --arch: '%s', --BusID: %s ", device, num_gpus,arch,pciBusId.value.decode('utf-8')[5:7]) 
+        self.logger.info("Using device %d/%d with --arch: '%s', --BusID: %s ", device, num_gpus,arch,pciBusId[5:7])
         #self.logger.debug(" => compute capability: %s", str(self.cuda_device.compute_capability()))
         self.logger.debug(" => compute capability: %s", hip_check(hip.hipDeviceComputeCapability(device)))
 
@@ -116,7 +120,8 @@ class CudaContext(object):
         self.logger.debug(" => Total memory: %d MB available", int(total/(1024*1024)))
 
         ##self.logger.info("Created context handle <%s>", str(self.cuda_context.handle))
-        
+        self.logger.info("Created context handle <%s>", str(self.cuda_context)) 
+
         #Create cache dir for cubin files
         self.cache_path = os.path.join(self.module_path, "cuda_cache") 
         if (self.use_cache):
@@ -125,42 +130,51 @@ class CudaContext(object):
             self.logger.info("Using CUDA cache dir %s", self.cache_path)
             
         self.autotuner = None
+        """
         if (autotuning):
             self.logger.info("Autotuning enabled. It may take several minutes to run the code the first time: have patience")
             self.autotuner = Autotuner.Autotuner()
-            
+        """    
     
     def __del__(self, *args):
-        self.logger.info("Cleaning up CUDA context handle <%s>", str(self.cuda_context.handle))
-            
+        #self.logger.info("Cleaning up CUDA context handle <%s>", str(self.cuda_context.handle))
+        #self.logger.info("Cleaning up CUDA context handle <%s>", str(self.cuda_context))
+        """
         # Loop over all contexts in stack, and remove "this"
         other_contexts = []
         #while (cuda.Context.get_current() != None):
         while (hip.hipCtxGetCurrent() != None):
             #context = cuda.Context.get_current()
             context = hip_check(hip.hipCtxGetCurrent())
-            if (context.handle != self.cuda_context.handle):
-                self.logger.debug("<%s> Popping <%s> (*not* ours)", str(self.cuda_context.handle), str(context.handle))
+            #if (context.handle != self.cuda_context.handle):
+            if (context != self.cuda_context):
+                #self.logger.debug("<%s> Popping <%s> (*not* ours)", str(self.cuda_context.handle), str(context.handle))
+                #self.logger.debug("<%s> Popping <%s> (*not* ours)", str(self.cuda_context), str(context))
                 other_contexts = [context] + other_contexts
                 #cuda.Context.pop()
                 hip.hipCtxPopCurrent()
             else:
-                self.logger.debug("<%s> Popping <%s> (ours)", str(self.cuda_context.handle), str(context.handle))
+                #self.logger.debug("<%s> Popping <%s> (ours)", str(self.cuda_context.handle), str(context.handle))
+                self.logger.debug("<%s> Popping <%s> (ours)", str(self.cuda_context), str(context))
                 #cuda.Context.pop()
                 hip.hipCtxPopCurrent()
 
         # Add all the contexts we popped that were not our own
         for context in other_contexts:
-            self.logger.debug("<%s> Pushing <%s>", str(self.cuda_context.handle), str(context.handle))
+            #self.logger.debug("<%s> Pushing <%s>", str(self.cuda_context.handle), str(context.handle))
+            self.logger.debug("<%s> Pushing <%s>", str(self.cuda_context), str(context))
             #cuda.Context.push(context)
             hip_check(hip.hipCtxPushCurrent(context))
 
-        self.logger.debug("<%s> Detaching", str(self.cuda_context.handle))
-        self.cuda_context.detach()
-        
+        #self.logger.debug("<%s> Detaching", str(self.cuda_context.handle))
+        self.logger.debug("<%s> Detaching", str(self.cuda_context))
+        #self.cuda_context.detach()
+        hip_check(hip.hipCtxDestroy(self.cuda_context))
+        """ 
         
     def __str__(self):
-        return "CudaContext id " + str(self.cuda_context.handle)
+        #return "CudaContext id " + str(self.cuda_context.handle)
+        return "CudaContext id " + str(self.cuda_context)
         
     
     def hash_kernel(kernel_filename, include_dirs):        
@@ -227,7 +241,7 @@ class CudaContext(object):
                 self.logger.debug("Info: %s", info_str)
             if error_str:
                 self.logger.debug("Error: %s", error_str)
-        
+       
         kernel_filename = os.path.normpath(kernel_filename)
         kernel_path = os.path.abspath(os.path.join(self.module_path, kernel_filename))
         #self.logger.debug("Getting %s", kernel_filename)
@@ -236,12 +250,12 @@ class CudaContext(object):
         options_hasher = hashlib.md5()
         options_hasher.update(str(defines).encode('utf-8') + str(compile_args).encode('utf-8'));
         options_hash = options_hasher.hexdigest()
-        
+       
         # Create hash of kernel souce
         source_hash = CudaContext.hash_kernel( \
                     kernel_path, \
                     include_dirs=[self.module_path] + include_dirs)
-                    
+       
         # Create final hash
         root, ext = os.path.splitext(kernel_filename)
         kernel_hash = root \
@@ -282,34 +296,16 @@ class CudaContext(object):
                     os.mkdir(cached_kernel_dir)
                 with io.open(cached_kernel_filename + ".txt", "w") as file:
                     file.write(kernel_string)
-                
             
+            """cuda
             with Common.Timer("compiler") as timer:
+
                 import warnings
                 with warnings.catch_warnings():
                     warnings.filterwarnings("ignore", message="The CUDA compiler succeeded, but said the following:\nkernel.cu", category=UserWarning)
 
                     cubin = cuda_compiler.compile(kernel_string, include_dirs=include_dirs, cache_dir=False, **compile_args)
-                #module = cuda.module_from_buffer(cubin, message_handler=cuda_compile_message_handler, **jit_compile_args)
-
-                #cubin = hip_check(hiprtc.hiprtcCreateProgram(kernel_string.encode(), b"Kernel-Name", 0, [], []))
-                props = hip.hipDeviceProp_t()
-                hip_check(hip.hipGetDeviceProperties(props,0))
-                arch = props.gcnArchName
-
-                print(f"Compiling kernel for {arch}")
-
-                cflags = [b"--offload-arch="+arch]
-                err, = hiprtc.hiprtcCompileProgram(cubin, len(cflags), cflags)
-                if err != hiprtc.hiprtcResult.HIPRTC_SUCCESS:
-                    log_size = hip_check(hiprtc.hiprtcGetProgramLogSize(cubin))
-                    log = bytearray(log_size)
-                    hip_check(hiprtc.hiprtcGetProgramLog(cubin, log))
-                    raise RuntimeError(log.decode())
-                code_size = hip_check(hiprtc.hiprtcGetCodeSize(cubin))
-                code = bytearray(code_size)
-                hip_check(hiprtc.hiprtcGetCode(cubin, code))
-                module = hip_check(hip.hipModuleLoadData(code))
+                module = cuda.module_from_buffer(cubin, message_handler=cuda_compile_message_handler, **jit_compile_args)
 
                 if (self.use_cache):
                     with io.open(cached_kernel_filename, "wb") as file:
@@ -317,7 +313,8 @@ class CudaContext(object):
                 
             self.modules[kernel_hash] = module
             return module
-    
+            """
+
     """
     Clears the kernel cache (useful for debugging & development)
     """
@@ -330,4 +327,5 @@ class CudaContext(object):
     Synchronizes all streams etc
     """
     def synchronize(self):
-        self.cuda_context.synchronize()
+        #self.cuda_context.synchronize()
+        hip_check(hip.hipCtxSynchronize())

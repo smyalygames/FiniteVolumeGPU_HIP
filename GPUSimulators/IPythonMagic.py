@@ -29,6 +29,19 @@ from hip import hip, hiprtc
 
 from GPUSimulators import Common, CudaContext
 
+def hip_check(call_result):
+    err = call_result[0]
+    result = call_result[1:]
+    if len(result) == 1:
+        result = result[0]
+    if isinstance(err, hip.hipError_t) and err != hip.hipError_t.hipSuccess:
+        raise RuntimeError(str(err))
+    elif (
+        isinstance(err, hiprtc.hiprtcResult)
+        and err != hiprtc.hiprtcResult.HIPRTC_SUCCESS
+    ):
+        raise RuntimeError(str(err))
+    return result
 
 @magics_class
 class MagicCudaContext(Magics): 
@@ -42,19 +55,6 @@ class MagicCudaContext(Magics):
         '--no_cache', '-nc', action="store_true", help='Disable caching of kernels')
     @magic_arguments.argument(
         '--no_autotuning', '-na', action="store_true", help='Disable autotuning of kernels')
-    def hip_check(call_result):
-        err = call_result[0]
-        result = call_result[1:]
-        if len(result) == 1:
-            result = result[0]
-        if isinstance(err, hip.hipError_t) and err != hip.hipError_t.hipSuccess:
-            raise RuntimeError(str(err))
-        elif (
-            isinstance(err, hiprtc.hiprtcResult)
-            and err != hiprtc.hiprtcResult.HIPRTC_SUCCESS
-        ):
-            raise RuntimeError(str(err))
-        return result
 
     def cuda_context_handler(self, line):
         args = magic_arguments.parse_argstring(self.cuda_context_handler, line)
