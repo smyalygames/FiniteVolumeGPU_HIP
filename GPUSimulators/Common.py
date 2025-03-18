@@ -35,6 +35,8 @@ import gc
 import netCDF4
 import json
 
+from tqdm import trange
+
 #import pycuda.compiler as cuda_compiler
 #import pycuda.gpuarray
 #import pycuda.driver as cuda
@@ -178,8 +180,8 @@ def runSimulation(simulator, simulator_args, outfile, save_times, save_var_names
         profiling_data_sim_runner["end"]["t_sim_init"] = time.time()
 
         #Start simulation loop
-        progress_printer = ProgressPrinter(save_times[-1], print_every=10)
-        for k in range(len(save_times)):
+        # progress_printer = ProgressPrinter(save_times[-1], print_every=10)
+        for k in trange(len(save_times)):
             #Get target time and step size there
             t_step = t_steps[k]
             t_end = save_times[k]
@@ -211,9 +213,9 @@ def runSimulation(simulator, simulator_args, outfile, save_times, save_var_names
             profiling_data_sim_runner["end"]["t_nc_write"] += time.time()
 
             #Write progress to screen
-            print_string = progress_printer.getPrintString(t_end)
-            if (print_string):
-                logger.debug(print_string)
+            # print_string = progress_printer.getPrintString(t_end)
+            # if (print_string):
+            #     logger.debug(print_string)
                 
         logger.debug("Simulated to t={:f} in {:d} timesteps (average dt={:f})".format(t_end, sim.simSteps(), sim.simTime() / sim.simSteps()))
         
@@ -433,58 +435,58 @@ class DataDumper(object):
         
 
 
-class ProgressPrinter(object):
-    """
-    Small helper class for 
-    """
-    def __init__(self, total_steps, print_every=5):
-        self.logger = logging.getLogger(__name__)
-        self.start = time.time()
-        self.total_steps = total_steps
-        self.print_every = print_every
-        self.next_print_time = self.print_every
-        self.last_step = 0
-        self.secs_per_iter = None
+# class ProgressPrinter(object):
+#     """
+#     Small helper class for 
+#     """
+#     def __init__(self, total_steps, print_every=5):
+#         self.logger = logging.getLogger(__name__)
+#         self.start = time.time()
+#         self.total_steps = total_steps
+#         self.print_every = print_every
+#         self.next_print_time = self.print_every
+#         self.last_step = 0
+#         self.secs_per_iter = None
         
-    def getPrintString(self, step):
-        elapsed =  time.time() - self.start
-        if (elapsed > self.next_print_time):            
-            dt = elapsed - (self.next_print_time - self.print_every)
-            dsteps = step - self.last_step
-            steps_remaining = self.total_steps - step
+#     def getPrintString(self, step):
+#         elapsed =  time.time() - self.start
+#         if (elapsed > self.next_print_time):            
+#             dt = elapsed - (self.next_print_time - self.print_every)
+#             dsteps = step - self.last_step
+#             steps_remaining = self.total_steps - step
                         
-            if (dsteps == 0):
-                return
+#             if (dsteps == 0):
+#                 return
                 
-            self.last_step = step
-            self.next_print_time = elapsed + self.print_every
+#             self.last_step = step
+#             self.next_print_time = elapsed + self.print_every
             
-            if not self.secs_per_iter:
-                self.secs_per_iter = dt / dsteps
-            self.secs_per_iter = 0.2*self.secs_per_iter + 0.8*(dt / dsteps)
+#             if not self.secs_per_iter:
+#                 self.secs_per_iter = dt / dsteps
+#             self.secs_per_iter = 0.2*self.secs_per_iter + 0.8*(dt / dsteps)
             
-            remaining_time = steps_remaining * self.secs_per_iter
+#             remaining_time = steps_remaining * self.secs_per_iter
 
-            return "{:s}. Total: {:s}, elapsed: {:s}, remaining: {:s}".format(
-                ProgressPrinter.progressBar(step, self.total_steps), 
-                ProgressPrinter.timeString(elapsed + remaining_time), 
-                ProgressPrinter.timeString(elapsed), 
-                ProgressPrinter.timeString(remaining_time))
+#             return "{:s}. Total: {:s}, elapsed: {:s}, remaining: {:s}".format(
+#                 ProgressPrinter.progressBar(step, self.total_steps), 
+#                 ProgressPrinter.timeString(elapsed + remaining_time), 
+#                 ProgressPrinter.timeString(elapsed), 
+#                 ProgressPrinter.timeString(remaining_time))
 
-    def timeString(seconds):
-        seconds = int(max(seconds, 1))
-        minutes, seconds = divmod(seconds, 60)
-        hours, minutes = divmod(minutes, 60)
-        periods = [('h', hours), ('m', minutes), ('s', seconds)]
-        time_string = ' '.join('{}{}'.format(value, name)
-                                for name, value in periods
-                                if value)
-        return time_string
+#     def timeString(seconds):
+#         seconds = int(max(seconds, 1))
+#         minutes, seconds = divmod(seconds, 60)
+#         hours, minutes = divmod(minutes, 60)
+#         periods = [('h', hours), ('m', minutes), ('s', seconds)]
+#         time_string = ' '.join('{}{}'.format(value, name)
+#                                 for name, value in periods
+#                                 if value)
+#         return time_string
 
-    def progressBar(step, total_steps, width=30):
-        progress = np.round(width * step / total_steps).astype(np.int32)
-        progressbar = "0% [" + "#"*(progress) + "="*(width-progress) + "] 100%"
-        return progressbar
+#     def progressBar(step, total_steps, width=30):
+#         progress = np.round(width * step / total_steps).astype(np.int32)
+#         progressbar = "0% [" + "#"*(progress) + "="*(width-progress) + "] 100%"
+#         return progressbar
 
 
 """

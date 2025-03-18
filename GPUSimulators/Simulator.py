@@ -25,6 +25,7 @@ import numpy as np
 import math
 import logging
 from enum import IntEnum
+from tqdm import tqdm
 
 #import pycuda.compiler as cuda_compiler
 #import pycuda.gpuarray
@@ -195,7 +196,7 @@ class BaseSimulator(object):
         Requires that the step() function is implemented in the subclasses
         """
 
-        printer = Common.ProgressPrinter(t)
+        # printer = Common.ProgressPrinter(t)
         
         t_start = self.simTime()
         t_end = t_start + t
@@ -205,32 +206,36 @@ class BaseSimulator(object):
             update_dt = False
             self.dt = dt
         
-        while(self.simTime() < t_end):
-            # Update dt every 100 timesteps and cross your fingers it works
-            # for the next 100
-            if (update_dt and (self.simSteps() % 100 == 0)):
-                self.dt = self.computeDt()*self.cfl_scale
-        
-            # Compute timestep for "this" iteration (i.e., shorten last timestep)
-            current_dt = np.float32(min(self.dt, t_end-self.simTime()))
+        with tqdm(total=t_end) as pbar:
+            while(self.simTime() < t_end):
+                # Update dt every 100 timesteps and cross your fingers it works
+                # for the next 100
+                if (update_dt and (self.simSteps() % 100 == 0)):
+                    self.dt = self.computeDt()*self.cfl_scale
+            
+                # Compute timestep for "this" iteration (i.e., shorten last timestep)
+                current_dt = np.float32(min(self.dt, t_end-self.simTime()))
 
-            # Stop if end reached (should not happen)
-            if (current_dt <= 0.0):
-                self.logger.warning("Timestep size {:d} is less than or equal to zero!".format(self.simSteps()))
-                break
-        
-            # Step forward in time
-            self.step(current_dt)
+                # Stop if end reached (should not happen)
+                if (current_dt <= 0.0):
+                    self.logger.warning("Timestep size {:d} is less than or equal to zero!".format(self.simSteps()))
+                    break
+            
+                # Step forward in time
+                self.step(current_dt)
 
-            #Print info
-            print_string = printer.getPrintString(self.simTime() - t_start)
-            if (print_string):
-                self.logger.info("%s: %s", self, print_string)
-                try:
-                    self.check()
-                except AssertionError as e:
-                    e.args += ("Step={:d}, time={:f}".format(self.simSteps(), self.simTime()),)
-                    raise
+                #Print info
+                pbar.update(current_dt)
+                # print_string = printer.getPrintString(self.simTime() - t_start)
+                # if (print_string):
+                #     self.logger.info("%s: %s", self, print_string)
+                #     try:
+                #         self.check()
+                #     except AssertionError as e:
+                #         e.args += ("Step={:d}, time={:f}".format(self.simSteps(), self.simTime()),)
+                #         raise
+
+        print("Done")
 
 
     def step(self, dt):
