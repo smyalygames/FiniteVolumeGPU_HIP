@@ -178,7 +178,7 @@ def genSim(grid, **kwargs):
     return sim
 
 
-outfile, sim_runner_profiling_data, sim_profiling_data = Common.runSimulation(
+(outfile, sim_runner_profiling_data, sim_profiling_data) = Common.runSimulation(
     genSim, arguments, outfile, save_times, save_var_names, dt)
 
 if(args.profile):
