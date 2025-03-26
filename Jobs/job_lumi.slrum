@@ -19,18 +19,18 @@ Mydir=/project/project_4650000xx
 Myapplication=${Mydir}/FiniteVolumeGPU_hip/mpiTesting.py
 
 #modules
-ml LUMI/23.03 partition/G
+ml LUMI/24.03 partition/G
 ml lumi-container-wrapper
-ml cray-python/3.9.13.1
-ml rocm/5.2.3
+ml cray-python/3.11.7
+ml rocm/6.2.2
 
 ml craype-accel-amd-gfx90a
-ml cray-mpich/8.1.27
+ml cray-mpich/8.1.29
 
 export PATH="/project/project_4650000xx/FiniteVolumeGPU_hip/MyCondaEnv/bin:$PATH"
 
 #missing library
-export LD_LIBRARY_PATH=/opt/cray/pe/mpich/8.1.27/ofi/cray/14.0/lib-abi-mpich:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/opt/cray/pe/mpich/8.1.29/ofi/cray/17.0/lib-abi-mpich:$LD_LIBRARY_PATH
 
 #Binding mask
 bind_mask="0x${fe}000000000000,0x${fe}00000000000000,0x${fe}0000,0x${fe}000000,0x${fe},0x${fe}00,0x${fe}00000000,0x${fe}0000000000"
