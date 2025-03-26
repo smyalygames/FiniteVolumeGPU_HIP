@@ -5,13 +5,13 @@ This is a HIP version of the [FiniteVolume code](https://github.com/babrodtk/Fin
 ## Setup on LUMI-G
 Here is a step-by-step guide on installing packages on LUMI-G
 
-### Step 1: Install rocm-5.2.5 with Easybuild
+### Step 1: Install rocm-5.4.6 with Easybuild
 ```
 export EBU_USER_PREFIX=/project/project_xxxxxx/EasyBuild
 ml LUMI/24.03 partition/G
 ml EasyBuild-user
 export PYTHONIOENCODING=utf-8
-eb rocm-5.2.5.eb -r
+eb rocm-5.4.6.eb -r
 ```
 
 ### Step 2: run conda-container
