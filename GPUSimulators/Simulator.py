@@ -157,7 +157,7 @@ class BaseSimulator(object):
         self.num_substeps = num_substeps
         
         #Handle autotuning block size
-        if (self.context.autotuner):
+        if self.context.autotuner:
             peak_configuration = self.context.autotuner.get_peak_performance(self.__class__)
             block_width = int(peak_configuration["block_width"])
             block_height = int(peak_configuration["block_height"])
@@ -202,38 +202,37 @@ class BaseSimulator(object):
         t_end = t_start + t
         
         update_dt = True
-        if (dt is not None):
+        if dt is not None:
             update_dt = False
             self.dt = dt
         
-        with tqdm(total=t_end) as pbar:
-            while(self.simTime() < t_end):
-                # Update dt every 100 timesteps and cross your fingers it works
-                # for the next 100
-                if (update_dt and (self.simSteps() % 100 == 0)):
-                    self.dt = self.computeDt()*self.cfl_scale
-            
-                # Compute timestep for "this" iteration (i.e., shorten last timestep)
-                current_dt = np.float32(min(self.dt, t_end-self.simTime()))
+        for _ in tqdm(range(math.ceil(t_end / self.dt))):
+            # Update dt every 100 timesteps and cross your fingers it works
+            # for the next 100
+            # TODO this is probably broken now after fixing the "infinite" loop
+            if update_dt and (self.simSteps() % 100 == 0):
+                self.dt = self.computeDt()*self.cfl_scale
 
-                # Stop if end reached (should not happen)
-                if (current_dt <= 0.0):
-                    self.logger.warning("Timestep size {:d} is less than or equal to zero!".format(self.simSteps()))
-                    break
-            
-                # Step forward in time
-                self.step(current_dt)
+            # Compute timestep for "this" iteration (i.e., shorten last timestep)
+            current_dt = np.float32(min(self.dt, t_end-self.simTime()))
 
-                #Print info
-                pbar.update(current_dt)
-                # print_string = printer.getPrintString(self.simTime() - t_start)
-                # if (print_string):
-                #     self.logger.info("%s: %s", self, print_string)
-                #     try:
-                #         self.check()
-                #     except AssertionError as e:
-                #         e.args += ("Step={:d}, time={:f}".format(self.simSteps(), self.simTime()),)
-                #         raise
+            # Stop if end reached (should not happen)
+            if current_dt <= 0.0:
+                self.logger.warning("Timestep size {:d} is less than or equal to zero!".format(self.simSteps()))
+                break
+
+            # Step forward in time
+            self.step(current_dt)
+
+            #Print info
+            # print_string = printer.getPrintString(self.simTime() - t_start)
+            # if (print_string):
+            #     self.logger.info("%s: %s", self, print_string)
+            #     try:
+            #         self.check()
+            #     except AssertionError as e:
+            #         e.args += ("Step={:d}, time={:f}".format(self.simSteps(), self.simTime()),)
+            #         raise
 
         print("Done")
 
