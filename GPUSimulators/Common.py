@@ -35,7 +35,7 @@ import gc
 import netCDF4
 import json
 
-from tqdm import trange
+from tqdm import tqdm
 
 #import pycuda.compiler as cuda_compiler
 #import pycuda.gpuarray
@@ -181,10 +181,10 @@ def runSimulation(simulator, simulator_args, outfile, save_times, save_var_names
 
         #Start simulation loop
         # progress_printer = ProgressPrinter(save_times[-1], print_every=10)
-        for k in trange(len(save_times)):
+        for k, t_step in tqdm(enumerate(t_steps), desc="Simulation Loop"):
             #Get target time and step size there
-            t_step = t_steps[k]
-            t_end = save_times[k]
+            # t_step = t_steps[k]
+            # t_end = save_times[k]
             
             #Sanity check simulator
             try:
@@ -196,7 +196,7 @@ def runSimulation(simulator, simulator_args, outfile, save_times, save_var_names
             profiling_data_sim_runner["start"]["t_full_step"] += time.time()
 
             #Simulate
-            if (t_step > 0.0):
+            if t_step > 0.0:
                 sim.simulate(t_step, dt)
 
             profiling_data_sim_runner["end"]["t_full_step"] += time.time()
@@ -217,7 +217,7 @@ def runSimulation(simulator, simulator_args, outfile, save_times, save_var_names
             # if (print_string):
             #     logger.debug(print_string)
                 
-        logger.debug("Simulated to t={:f} in {:d} timesteps (average dt={:f})".format(t_end, sim.simSteps(), sim.simTime() / sim.simSteps()))
+        logger.debug("Simulated to t={:f} in {:d} timesteps (average dt={:f})".format(save_times[-1], sim.simSteps(), sim.simTime() / sim.simSteps()))
         
     return outdata.filename, profiling_data_sim_runner, sim.profiling_data_mpi
     #return outdata.filename
@@ -308,7 +308,7 @@ class IPEngine(object):
         import ipyparallel
         self.cluster = ipyparallel.Client()#profile='mpi')
         time.sleep(3)
-        while(len(self.cluster.ids) != n_engines):
+        while len(self.cluster.ids) != n_engines:
             time.sleep(0.5)
             self.logger.info("Waiting for cluster...")
             self.cluster = ipyparallel.Client()#profile='mpi')
