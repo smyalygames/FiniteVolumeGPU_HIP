@@ -186,7 +186,6 @@ cython_debug/
 .pypirc
 
 # CUDA
-cuda_cache/
 
 # Taken from: https://github.com/github/gitignore/blob/main/CUDA.gitignore
 *.i
