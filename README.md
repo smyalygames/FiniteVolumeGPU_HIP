@@ -22,7 +22,7 @@ cotainr build my_container.sif --system=lumi-g --conda-env=conda_environment_lum
 ```
 
 ### Step 2: Modify Slurm Job file
-Update the contents of `Jobs/job_lumi.slurm`([link](Jobs/job_lumi.slurm)) to match your project allocation,
+Update the contents of [`Jobs/job_lumi.slurm`](Jobs/job_lumi.slurm) to match your project allocation,
 and the directories of where the simulator and Conda container is stored.
 
 ### Step 3: Run the Slurm Job
