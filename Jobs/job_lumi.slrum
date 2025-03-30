@@ -1,39 +1,27 @@
-#!/bin/bash -e
+#!/bin/bash -l
 #SBATCH --job-name=lumi
 #SBATCH --account=project_4650000xx
 #SBATCH --time=00:10:00
 #SBATCH --partition=dev-g
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=8
-#SBATCH --gpus=8
 #SBATCH --gpus-per-node=8
-#SBATCH -o %x-%j.out
+#SBATCH --output=%x-%j.out
 #SBATCH --exclusive
-#
 
 N=$SLURM_JOB_NUM_NODES
 echo "--nbr of nodes:", $N
 echo "--total nbr of gpus:", $SLURM_NTASKS
 
-Mydir=/project/project_4650000xx
-Myapplication=${Mydir}/FiniteVolumeGPU_hip/mpiTesting.py
+Mydir=/project/${project}
+Myapplication=${Mydir}/FiniteVolumeGPU_HIP/mpiTesting.py
+CondaEnv=${Mydir}/FiniteVolumeGPU_HIP/MyCondaEnv/bin
 
-#modules
-ml LUMI/24.03 partition/G
-ml lumi-container-wrapper
-ml cray-python/3.11.7
-ml rocm/6.2.2
+export PATH="${CondaEnv}:$PATH"
 
-ml craype-accel-amd-gfx90a
-ml cray-mpich/8.1.29
+CPU_BIND="map_cpu:49,57,17,25,1,9,33,41"
 
-export PATH="/project/project_4650000xx/FiniteVolumeGPU_hip/MyCondaEnv/bin:$PATH"
+export MPICH_GPU_SUPPORT_ENABLED=1
 
-#missing library
-export LD_LIBRARY_PATH=/opt/cray/pe/mpich/8.1.29/ofi/cray/17.0/lib-abi-mpich:$LD_LIBRARY_PATH
-
-#Binding mask
-bind_mask="0x${fe}000000000000,0x${fe}00000000000000,0x${fe}0000,0x${fe}000000,0x${fe},0x${fe}00,0x${fe}00000000,0x${fe}0000000000"
-
-srun --cpu-bind=mask_cpu:$bind_mask \
-     python ${Myapplication} -nx 1024 -ny 1024 --profile 	
+srun --cpu-bind=${CPU_BIND} --mpi=pmi2 \
+     python ${Myapplication} -nx 1024 -ny 1024 --profile
