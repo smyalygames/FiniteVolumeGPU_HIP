@@ -70,7 +70,7 @@ def hip_check(call_result):
 
 args = parser.parse_args()
 
-if(args.profile):
+if args.profile:
     profiling_data = {}
     # profiling: total run time
     t_total_start = time.time()
@@ -79,6 +79,8 @@ if(args.profile):
 
 # Get MPI COMM to use
 comm = MPI.COMM_WORLD
+size = comm.Get_size()
+rank = comm.Get_rank()
 
 
 ####
@@ -86,7 +88,7 @@ comm = MPI.COMM_WORLD
 ####
 log_level_console = 20
 log_level_file = 10
-log_filename = 'mpi_' + str(comm.rank) + '.log'
+log_filename = 'mpi_' + str(rank) + '.log'
 logger = logging.getLogger('GPUSimulators')
 logger.setLevel(min(log_level_console, log_level_file))
 
@@ -110,7 +112,7 @@ logger.info("File logger using level %s to %s",
 # Initialize MPI grid etc
 ####
 logger.info("Creating MPI grid")
-grid = MPISimulator.MPIGrid(MPI.COMM_WORLD)
+grid = MPISimulator.MPIGrid(comm)
 
 """
 job_id = int(os.environ["SLURM_JOB_ID"])
@@ -152,7 +154,7 @@ gamma = 1.4
 #save_times = np.linspace(0, 0.000099, 11)
 #save_times = np.linspace(0, 0.000099, 2)
 save_times = np.linspace(0, 0.0000999, 2)
-outfile = "mpi_out_" + str(MPI.COMM_WORLD.rank) + ".nc"
+outfile = "mpi_out_" + str(rank) + ".nc"
 save_var_names = ['rho', 'rho_u', 'rho_v', 'E']
 
 arguments = IC.genKelvinHelmholtz(nx, ny, gamma, grid=grid)
@@ -160,7 +162,7 @@ arguments['context'] = cuda_context
 arguments['theta'] = 1.2
 arguments['grid'] = grid
 
-if(args.profile):
+if args.profile:
     t_init_end = time.time()
     t_init = t_init_end - t_init_start
     profiling_data["t_init"] = t_init
@@ -181,14 +183,14 @@ def genSim(grid, **kwargs):
 (outfile, sim_runner_profiling_data, sim_profiling_data) = Common.runSimulation(
     genSim, arguments, outfile, save_times, save_var_names, dt)
 
-if(args.profile):
+if args.profile:
     t_total_end = time.time()
     t_total = t_total_end - t_total_start
     profiling_data["t_total"] = t_total
-    print("Total run time on rank " + str(MPI.COMM_WORLD.rank) + " is " + str(t_total) + " s")
+    print("Total run time on rank " + str(rank) + " is " + str(t_total) + " s")
 
 # write profiling to json file
-if(args.profile and MPI.COMM_WORLD.rank == 0):
+if args.profile and rank == 0:
     job_id = ""
     if "SLURM_JOB_ID" in os.environ:
         job_id = int(os.environ["SLURM_JOB_ID"])
@@ -199,7 +201,7 @@ if(args.profile and MPI.COMM_WORLD.rank == 0):
             str(job_id) + "_" + str(allocated_nodes) + "_nodes_and_" + str(allocated_gpus) + "_GPUs_profiling.json"
         profiling_data["outfile"] = outfile
     else:
-        profiling_file = "MPI_" + str(MPI.COMM_WORLD.size) + "_procs_and_" + str(num_cuda_devices) + "_GPUs_profiling.json"
+        profiling_file = "MPI_" + str(size) + "_procs_and_" + str(num_cuda_devices) + "_GPUs_profiling.json"
 
     for stage in sim_runner_profiling_data["start"].keys():
         profiling_data[stage] = sim_runner_profiling_data["end"][stage] - sim_runner_profiling_data["start"][stage]
@@ -214,7 +216,7 @@ if(args.profile and MPI.COMM_WORLD.rank == 0):
 
     profiling_data["slurm_job_id"] = job_id
     profiling_data["n_cuda_devices"] = str(num_cuda_devices)
-    profiling_data["n_processes"] = str(MPI.COMM_WORLD.size)
+    profiling_data["n_processes"] = str(size)
     profiling_data["git_hash"] = Common.getGitHash()
     profiling_data["git_status"] = Common.getGitStatus()
 
