@@ -13,9 +13,9 @@ N=$SLURM_JOB_NUM_NODES
 echo "--nbr of nodes:", $N
 echo "--total nbr of gpus:", $SLURM_NTASKS
 
-Mydir=/project/${project}
-Myapplication=${Mydir}/FiniteVolumeGPU_HIP/mpiTesting.py
-CondaEnv=${Mydir}/FiniteVolumeGPU_HIP/MyCondaEnv/bin
+MyDir=/project/project_4650000xx
+MyApplication=${MyDir}/FiniteVolumeGPU_HIP/mpiTesting.py
+CondaEnv=${MyDir}/FiniteVolumeGPU_HIP/MyCondaEnv/bin
 
 export PATH="${CondaEnv}:$PATH"
 
@@ -24,4 +24,4 @@ CPU_BIND="map_cpu:49,57,17,25,1,9,33,41"
 export MPICH_GPU_SUPPORT_ENABLED=1
 
 srun --cpu-bind=${CPU_BIND} --mpi=pmi2 \
-     python ${Myapplication} -nx 1024 -ny 1024 --profile
+     python ${MyApplication} -nx 1024 -ny 1024 --profile
